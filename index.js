@@ -1,6 +1,6 @@
 // Constants and helper functions
-const SCREEN_WIDTH = 1400;
-const SCREEN_HEIGHT = 1000;
+const SCREEN_WIDTH = 1200;
+const SCREEN_HEIGHT = 800;
 const BACKGROUND = [20, 20, 30];
 const NEUTRAL_COLOR = [100, 100, 120];
 const RED = [255, 80, 80];
