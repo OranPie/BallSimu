@@ -488,11 +488,11 @@
                 this.last_fire_time = current_time;
             }
             if (this.current_bullet && this.current_bullet[0] > 0) {
-                const log_val = Math.log(this.total_bullets);
+                const log_val = Math.log2(this.bullets.reduce((sum, q) => sum + q[0], 0));
                 this.shooting_rate = Math.max(1, Math.min(30, log_val / 6));
             }
             const continuous_bonus = Math.min(2.0, 1.0 + (this.continuous_fire_time / 30000) * 0.05);
-            if (this.continuous_fire_time > (5000 * (this.advance || 1)) && this.current_bullet[0] > 500) {
+            if (this.continuous_fire_time > (2500 * (this.advance || 1)) && this.current_bullet[0] > 500) {
                 this.current_bullet[0] = Math.floor(this.current_bullet[0] / 2);
                 this.current_bullet[2] *= 2;
                 this.advance = (this.advance || 1) + 1;
