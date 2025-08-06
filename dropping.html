@@ -1,0 +1,824 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Ball Collision Game</title>
+    <style>
+        body {
+            margin: 0;
+            background-color: #14141e;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+        canvas {
+            border: 1px solid #333;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas" width="600" height="900"></canvas>
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // Custom configurations
+        const FIRST_ROW_DOTS_COUNT = 6;
+        const SECOND_ROW_DOTS_COUNT = 12;
+        const THIRD_ROW_DOTS_COUNT = 16;
+        const DOT_RADIUS_FACTOR = 1.0;
+        const LAUNCHER_Y_POSITION = 1 / 8;
+        const LAUNCHER_ANGLE_RANGE = 50;
+        const LAUNCHER_SPEED = 2.0;
+
+        const MULT_AREA = [
+            { check: true, text: "Check", color: [100, 100, 200], value_operation: (ball, game) => [ball.value < 512, ball.value], width: 1 / 8 },
+            { check: false, text: "×2", color: [70, 180, 80], value_operation: (ball, game) => [true, ball.value * 2], width: 3 / 24 },
+            { check: false, text: "×2", color: [70, 180, 80], value_operation: (ball, game) => [true, ball.value / 2], width: 1 / 12 },
+            { check: false, text: "×8", color: [40, 140, 60], value_operation: (ball, game) => [true, ball.value * 8], width: 1 / 24 },
+            { check: false, text: "×4", color: [50, 160, 70], value_operation: (ball, game) => [true, ball.value * 4], width: 1 / 12 },
+            { check: true, text: "Check", color: [100, 100, 200], value_operation: (ball, game) => [ball.value < 512, ball.value], width: 1 / 6 },
+            { check: false, text: "×4", color: [50, 160, 70], value_operation: (ball, game) => [true, ball.value * 4], width: 1 / 12 },
+            { check: false, text: "×8", color: [50, 160, 70], value_operation: (ball, game) => [true, ball.value * 8], width: 1 / 24 },
+            { check: false, text: "×2", color: [70, 180, 80], value_operation: (ball, game) => [true, ball.value * 2], width: 1 / 12 },
+            { check: false, text: "×2", color: [70, 180, 80], value_operation: (ball, game) => [true, ball.value * 2], width: 3 / 24 },
+            { check: true, text: "Check", color: [100, 100, 200], value_operation: (ball, game) => [ball.value < 512, ball.value], width: 1 / 8 },
+        ];
+
+        // Fonts (using system fonts)
+        const FONT = '24px Arial';
+        const FONT_BALL = '20px Arial';
+        const FONT_TITLE = '32px Arial';
+        const FONT_SMALL = '18px Arial';
+
+        // Screen dimensions
+        const SCREEN_WIDTH = 600;
+        const SCREEN_HEIGHT = 900;
+
+        // Colors
+        const BACKGROUND = [20, 20, 30];
+        const LAUNCHER_COLOR = [100, 150, 200];
+        const GRAY_DOT_COLOR = [150, 150, 150];
+        const MOVING_DOT_COLOR = [180, 180, 100];
+        const MULTIPLIER_BG = [40, 40, 60];
+        const SETTLEMENT_COLORS = [
+            [200, 120, 50],
+            [50, 150, 200],
+            [180, 70, 180],
+            [70, 180, 150],
+            [200, 200, 70]
+        ];
+        const TEAM_COLORS = {
+            "Red": [220, 60, 60],
+            "Blue": [60, 120, 220],
+            "Green": [60, 180, 80],
+            "Yellow": [220, 180, 60]
+        };
+
+        // Area definitions
+        class AreaDefine {
+            constructor() {
+                this.areas = [
+                    { name: "旋转子弹", dots: 1, width: 1 / 6 },
+                    { name: "引力球", dots: 1, width: 1 / 8 },
+                    { name: "普通球", dots: 0, width: 1 / 6 },
+                    { name: "普通子弹", dots: 0, width: 3 / 24 },
+                    { name: "护盾", dots: 3, width: 1 / 3 },
+                    { name: "扇形子弹", dots: 0, width: 1 / 12 },
+                ];
+            }
+        }
+
+        // Physics parameters
+        const GRAVITY = 0.2;
+        const ELASTICITY = 0.8;
+        const FRICTION = 0.99;
+        const DOT_COLLISION_FORCE = 6.0;
+        const MAX_CALC_FPS = 60;
+        const MIN_LAUNCH_INTERVAL = 5;
+        const LAUNCH_BALL_SPEED = 8;
+
+        function fmnumber(number) {
+            const units = ["", "K", "M", "B", "T"];
+            for (let unit of units) {
+                if (number < 1000) {
+                    return `${Math.floor(number)}${unit}`;
+                }
+                number /= 1000;
+            }
+            return `${number.toFixed(2)}Z`;
+        }
+
+        function calculate_ball_radius(value) {
+            const base_radius = Math.log10(Math.max(1, Math.sqrt(value)) + 1) * (SCREEN_WIDTH / 64);
+            return Math.max(5, Math.min(SCREEN_WIDTH / 12, base_radius));
+        }
+
+        class Ball {
+            constructor(x, y, team, value, initial_value) {
+                this.x = x;
+                this.y = y;
+                this.team = team;
+                this.value = value;
+                this.initial_value = initial_value;
+                this.color = TEAM_COLORS[team];
+                this.radius_factor = 1.0;
+                this.update_radius();
+                this.mass = Math.max(1, value ** (1 / 3));
+                this.vx = 0;
+                this.vy = 0;
+                this.settled = false;
+                this.settlement_area = null;
+                this.score_added = false;
+            }
+
+            update_radius() {
+                const base_radius = calculate_ball_radius(this.value);
+                this.radius = base_radius * this.radius_factor;
+            }
+
+            update() {
+                this.vy += GRAVITY;
+                this.vx *= FRICTION;
+                this.vy *= FRICTION;
+                this.x += this.vx;
+                this.y += this.vy;
+
+                if (this.x - this.radius < 0) {
+                    this.x = this.radius;
+                    this.vx = -this.vx * ELASTICITY;
+                } else if (this.x + this.radius > SCREEN_WIDTH) {
+                    this.x = SCREEN_WIDTH - this.radius;
+                    this.vx = -this.vx * ELASTICITY;
+                }
+
+                if (this.y - this.radius < 0) {
+                    this.y = this.radius;
+                    this.vy = -this.vy * ELASTICITY;
+                } else if (this.y + this.radius > SCREEN_HEIGHT) {
+                    this.y = SCREEN_HEIGHT - this.radius;
+                    this.vy = -this.vy * ELASTICITY;
+                }
+            }
+
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, 2 * Math.PI);
+                ctx.fillStyle = `rgb(${this.color.join(',')})`;
+                ctx.fill();
+                if (this.value >= 512) {
+                    ctx.font = FONT_BALL;
+                    ctx.fillStyle = 'rgb(255,255,255)';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText(fmnumber(this.value), this.x, this.y);
+                }
+            }
+        }
+
+        class BallCollisionGame {
+            constructor(teams, initial_ball_count = 3, initial_value = 10, area_define = null) {
+                this.teams = teams;
+                this.initial_value = initial_value;
+                this.area_define = area_define || new AreaDefine();
+                this.balls = [];
+                this.ball_pool = {};
+                for (let team in teams) {
+                    this.ball_pool[team] = initial_ball_count;
+                }
+                this.launcher_y = Math.floor(SCREEN_HEIGHT * LAUNCHER_Y_POSITION);
+                this.launcher_angle = 0;
+                this.angle_speed = LAUNCHER_SPEED;
+                this.angle_direction = 1;
+                this.moving_dot_x = SCREEN_WIDTH / 2;
+                this.moving_dot_speed = SCREEN_WIDTH / 12 / 20;
+                this.dot_radius = (SCREEN_WIDTH / 64) * DOT_RADIUS_FACTOR;
+                this.first_row_dots = [];
+                this.second_row_dots = [];
+                this.settlement_dots = [];
+                this.init_dots();
+                this.settlement_records = {};
+                this.team_scores = {};
+                for (let team in teams) {
+                    this.settlement_records[team] = [];
+                    this.team_scores[team] = 0;
+                }
+                this.multiplier_barriers = [];
+                this.multiplier_area_counts = new Array(MULT_AREA.length).fill(0);
+                this.init_multiplier_barriers();
+                this.init_settlement_barriers();
+
+                this.ball_launch_queue = [];
+                this.last_launch_frame = -MIN_LAUNCH_INTERVAL;
+
+                for (let team in this.ball_pool) {
+                    for (let i = 0; i < this.ball_pool[team]; i++) {
+                        this.add_ball(1, team, this.initial_value);
+                    }
+                }
+
+                this.calc_fps = 0;
+                this.render_fps = 0;
+                this.last_calc_time = performance.now();
+                this.last_render_time = performance.now();
+                this.calc_delay = 1000 / MAX_CALC_FPS;
+                this.frame_count = 0;
+            }
+
+            init_dots() {
+                const dot_y = SCREEN_HEIGHT * 3 / 12;
+                const dot_y_2 = SCREEN_HEIGHT * 4 / 12;
+                const dot_y_3 = SCREEN_HEIGHT * 4 / 6;
+
+                let total_dot_width = FIRST_ROW_DOTS_COUNT * this.dot_radius * 2;
+                let gap = (SCREEN_WIDTH - total_dot_width) / (FIRST_ROW_DOTS_COUNT + 1);
+                for (let i = 0; i < FIRST_ROW_DOTS_COUNT; i++) {
+                    let dot_x = gap * (i + 1) + this.dot_radius * (2 * i + 1);
+                    this.first_row_dots.push([dot_x, dot_y]);
+                }
+                this.first_row_dots.push([0, dot_y]);
+                this.first_row_dots.push([SCREEN_WIDTH, dot_y]);
+
+                total_dot_width = SECOND_ROW_DOTS_COUNT * this.dot_radius * 2;
+                gap = (SCREEN_WIDTH - total_dot_width) / (SECOND_ROW_DOTS_COUNT + 1);
+                for (let i = 0; i < SECOND_ROW_DOTS_COUNT; i++) {
+                    let dot_x = gap * (i + 1) + this.dot_radius * (2 * i + 1);
+                    this.second_row_dots.push([dot_x, dot_y_2]);
+                }
+
+                this.second_row_dots.push([0, dot_y_2]);
+
+                total_dot_width = THIRD_ROW_DOTS_COUNT * this.dot_radius * 2;
+                gap = (SCREEN_WIDTH - total_dot_width) / (THIRD_ROW_DOTS_COUNT + 1);
+                for (let i = 0; i < THIRD_ROW_DOTS_COUNT; i++) {
+                    let dot_x = gap * (i + 1) + this.dot_radius * (2 * i + 1);
+                    this.second_row_dots.push([dot_x, dot_y_3]);
+                }
+
+                this.second_row_dots.push([0, dot_y_3]);
+                this.second_row_dots.push([SCREEN_WIDTH, dot_y_2]);
+                this.second_row_dots.push([SCREEN_WIDTH, dot_y_3]);
+
+                const settlement_y = SCREEN_HEIGHT - SCREEN_HEIGHT / 16;
+                let start_x = 0;
+                for (let area of this.area_define.areas) {
+                    const area_width = area.width * SCREEN_WIDTH;
+                    const dot_count = area.dots;
+                    if (dot_count > 0) {
+                        const dot_gap = area_width / (dot_count + 1);
+                        for (let j = 0; j < dot_count; j++) {
+                            let dot_x = start_x + dot_gap * (j + 1);
+                            this.settlement_dots.push([dot_x, settlement_y]);
+                        }
+                    }
+                    start_x += area_width;
+                }
+            }
+
+            init_multiplier_barriers() {
+                const widths = MULT_AREA.map(a => a.width);
+                const total_width = widths.reduce((a, b) => a + b, 0);
+                let start_x = (SCREEN_WIDTH - total_width * SCREEN_WIDTH) / 2;
+                const multiplier_y = SCREEN_HEIGHT * 5 / 12;
+                const multiplier_height = SCREEN_HEIGHT / 24;
+
+                let current_x = start_x;
+                for (let i = 0; i < widths.length - 1; i++) {
+                    current_x += widths[i] * SCREEN_WIDTH;
+                    const barrier_width = SCREEN_WIDTH / 128;
+                    const barrier_height = multiplier_height * 1.25;
+                    const barrier_y = multiplier_y - (barrier_height - multiplier_height) / 2;
+                    this.multiplier_barriers.push({
+                        rect: { left: current_x - barrier_width / 2, top: barrier_y, width: barrier_width, height: barrier_height, right: current_x - barrier_width / 2 + barrier_width, bottom: barrier_y + barrier_height },
+                        color: [100, 100, 100]
+                    });
+                }
+            }
+
+            init_settlement_barriers() {
+                const widths = this.area_define.areas.map(a => a.width);
+                const total_width = widths.reduce((a, b) => a + b, 0);
+                let start_x = (SCREEN_WIDTH - total_width * SCREEN_WIDTH) / 2;
+                const multiplier_y = SCREEN_HEIGHT - SCREEN_HEIGHT / 16;
+                const multiplier_height = SCREEN_HEIGHT / 16;
+
+                let current_x = start_x;
+                for (let i = 0; i < widths.length - 1; i++) {
+                    current_x += widths[i] * SCREEN_WIDTH;
+                    const barrier_width = SCREEN_WIDTH / 128;
+                    const barrier_height = multiplier_height * 1.25;
+                    const barrier_y = multiplier_y - (barrier_height - multiplier_height) / 2;
+                    this.multiplier_barriers.push({
+                        rect: { left: current_x - barrier_width / 2, top: barrier_y, width: barrier_width, height: barrier_height, right: current_x - barrier_width / 2 + barrier_width, bottom: barrier_y + barrier_height },
+                        color: [100, 100, 100]
+                    });
+                }
+            }
+
+            add_ball(count, team, ball_value = null) {
+                if (ball_value === null) ball_value = this.initial_value;
+                for (let i = 0; i < count; i++) {
+                    const angle_rad = this.launcher_angle * Math.PI / 180;
+                    const speed = LAUNCH_BALL_SPEED;
+                    const vx = Math.sin(angle_rad) * speed;
+                    const vy = -Math.cos(angle_rad) * speed;
+                    const new_ball = new Ball(
+                        SCREEN_WIDTH / 2,
+                        this.launcher_y,
+                        team,
+                        ball_value,
+                        this.initial_value
+                    );
+                    new_ball.vx = vx;
+                    new_ball.vy = vy;
+                    this.balls.push(new_ball);
+                }
+            }
+
+            remove_ball(count, team) {
+                let removed = 0;
+                for (let i = this.balls.length - 1; i >= 0; i--) {
+                    if (this.balls[i].team === team) {
+                        this.balls.splice(i, 1);
+                        removed++;
+                        if (removed >= count) break;
+                    }
+                }
+            }
+
+            yield_team(team) {
+                const records = this.settlement_records[team] || [];
+                this.settlement_records[team] = [];
+                return records;
+            }
+
+            update_launcher() {
+                this.launcher_angle += this.angle_speed * this.angle_direction;
+                if (this.launcher_angle > LAUNCHER_ANGLE_RANGE || this.launcher_angle < -LAUNCHER_ANGLE_RANGE) {
+                    this.angle_direction *= -1;
+                    this.launcher_angle = Math.max(-LAUNCHER_ANGLE_RANGE, Math.min(LAUNCHER_ANGLE_RANGE, this.launcher_angle));
+                }
+            }
+
+            update_moving_dot() {
+                this.moving_dot_x += this.moving_dot_speed;
+                if (this.moving_dot_x < 0 || this.moving_dot_x > SCREEN_WIDTH) {
+                    this.moving_dot_speed *= -1;
+                }
+            }
+
+            check_ball_collisions() {
+                for (let i = 0; i < this.balls.length; i++) {
+                    for (let j = i + 1; j < this.balls.length; j++) {
+                        const ball1 = this.balls[i];
+                        const ball2 = this.balls[j];
+                        const dx = ball1.x - ball2.x;
+                        const dy = ball1.y - ball2.y;
+                        const distance = Math.sqrt(dx * dx + dy * dy);
+                        if (distance < ball1.radius + ball2.radius) {
+                            const nx = dx / Math.max(distance, 0.01);
+                            const ny = dy / Math.max(distance, 0.01);
+                            const dvx = ball1.vx - ball2.vx;
+                            const dvy = ball1.vy - ball2.vy;
+                            let velocity_along_normal = dvx * nx + dvy * ny;
+                            if (velocity_along_normal > 0) continue;
+                            let impulse = -(1 + ELASTICITY) * velocity_along_normal;
+                            impulse /= (1 / ball1.mass + 1 / ball2.mass);
+                            ball1.vx += impulse * nx / ball1.mass;
+                            ball1.vy += impulse * ny / ball1.mass;
+                            ball2.vx -= impulse * nx / ball2.mass;
+                            ball2.vy -= impulse * ny / ball2.mass;
+                            const overlap = (ball1.radius + ball2.radius - distance) / 2;
+                            ball1.x += overlap * nx;
+                            ball1.y += overlap * ny;
+                            ball2.x -= overlap * nx;
+                            ball2.y -= overlap * ny;
+                        }
+                    }
+                }
+            }
+
+            check_dot_collision(ball) {
+                // First row
+                for (let dot of this.first_row_dots) {
+                    const [dot_x, dot_y] = dot;
+                    const distance = Math.sqrt((ball.x - dot_x) ** 2 + (ball.y - dot_y) ** 2);
+                    if (distance < (ball.radius + this.dot_radius)) {
+                        const normal_x = (ball.x - dot_x) / Math.max(distance, 0.01);
+                        const normal_y = (ball.y - dot_y) / Math.max(distance, 0.01);
+                        ball.vx += normal_x * DOT_COLLISION_FORCE;
+                        ball.vy += normal_y * DOT_COLLISION_FORCE;
+                        const overlap = (ball.radius + this.dot_radius) - distance;
+                        ball.x += normal_x * overlap;
+                        ball.y += normal_y * overlap;
+                        ball.radius_factor *= 0.99;
+                        ball.update_radius();
+                    }
+                }
+
+                // Second row
+                for (let dot of this.second_row_dots) {
+                    const [dot_x, dot_y] = dot;
+                    const distance = Math.sqrt((ball.x - dot_x) ** 2 + (ball.y - dot_y) ** 2);
+                    if (distance < (ball.radius + this.dot_radius)) {
+                        const normal_x = (ball.x - dot_x) / Math.max(distance, 0.01);
+                        const normal_y = (ball.y - dot_y) / Math.max(distance, 0.01);
+                        ball.vx += normal_x * DOT_COLLISION_FORCE;
+                        ball.vy += normal_y * DOT_COLLISION_FORCE;
+                        const overlap = (ball.radius + this.dot_radius) - distance;
+                        ball.x += normal_x * overlap;
+                        ball.y += normal_y * overlap;
+                        ball.radius_factor *= 0.99;
+                        ball.update_radius();
+                    }
+                }
+
+                // Settlement dots
+                for (let dot of this.settlement_dots) {
+                    const [dot_x, dot_y] = dot;
+                    const distance = Math.sqrt((ball.x - dot_x) ** 2 + (ball.y - dot_y) ** 2);
+                    if (distance < (ball.radius + this.dot_radius)) {
+                        const normal_x = (ball.x - dot_x) / Math.max(distance, 0.01);
+                        const normal_y = (ball.y - dot_y) / Math.max(distance, 0.01);
+                        ball.vx += normal_x * DOT_COLLISION_FORCE;
+                        ball.vy += normal_y * DOT_COLLISION_FORCE;
+                        const overlap = (ball.radius + this.dot_radius) - distance;
+                        ball.x += normal_x * overlap;
+                        ball.y += normal_y * overlap;
+                        ball.radius_factor *= 0.99;
+                        ball.update_radius();
+                    }
+                }
+
+                // Moving dot
+                const moving_dot_y = SCREEN_HEIGHT * 5 / 12 - SCREEN_HEIGHT / 24 * 1 / 16;
+                const distance = Math.sqrt((ball.x - this.moving_dot_x) ** 2 + (ball.y - moving_dot_y) ** 2);
+                if (distance < (ball.radius + this.dot_radius)) {
+                    const normal_x = (ball.x - this.moving_dot_x) / Math.max(distance, 0.01);
+                    const normal_y = (ball.y - moving_dot_y) / Math.max(distance, 0.01);
+                    ball.vx += normal_x * DOT_COLLISION_FORCE;
+                    ball.vy += normal_y * DOT_COLLISION_FORCE;
+                    const overlap = (ball.radius + this.dot_radius) - distance;
+                    ball.x += normal_x * overlap;
+                    ball.y += normal_y * overlap;
+                    ball.radius_factor *= 0.99;
+                    ball.update_radius();
+                }
+            }
+
+            check_barrier_collision(ball) {
+                for (let barrier of this.multiplier_barriers) {
+                    let closest_x = Math.max(barrier.rect.left, Math.min(ball.x, barrier.rect.right));
+                    let closest_y = Math.max(barrier.rect.top, Math.min(ball.y, barrier.rect.bottom));
+                    const dx = ball.x - closest_x;
+                    const dy = ball.y - closest_y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    if (distance < ball.radius) {
+                        let nx, ny;
+                        if (distance === 0) {
+                            nx = Math.random() - 0.5;
+                            ny = Math.random() - 0.5;
+                            const length = Math.sqrt(nx * nx + ny * ny);
+                            nx /= length;
+                            ny /= length;
+                        } else {
+                            nx = dx / distance;
+                            ny = dy / distance;
+                        }
+                        const dot_product = ball.vx * nx + ball.vy * ny;
+                        ball.vx -= (1 + ELASTICITY) * dot_product * nx;
+                        ball.vy -= (1 + ELASTICITY) * dot_product * ny;
+                        const overlap = ball.radius - distance;
+                        ball.x += nx * overlap;
+                        ball.y += ny * overlap;
+                        ball.radius_factor *= 0.99;
+                        return true;
+                    }
+                }
+                return false;
+            }
+
+            check_multiplier_collision(ball) {
+                const multiplier_y = SCREEN_HEIGHT * 5 / 12;
+                const multiplier_height = SCREEN_HEIGHT / 24;
+                if (multiplier_y < ball.y && ball.y < multiplier_y + multiplier_height) {
+                    const widths = MULT_AREA.map(a => a.width);
+                    const total_width = widths.reduce((a, b) => a + b, 0);
+                    let start_x = (SCREEN_WIDTH - total_width * SCREEN_WIDTH) / 2;
+                    let current_x = start_x;
+                    for (let i = 0; i < MULT_AREA.length; i++) {
+                        const area_cfg = MULT_AREA[i];
+                        const area_width = area_cfg.width * SCREEN_WIDTH;
+                        const area_left = current_x;
+                        const area_right = current_x + area_width;
+                        if (area_left < ball.x && ball.x < area_right) {
+                            const [pass_area, new_value] = area_cfg.value_operation(ball, this);
+                            if (pass_area) {
+                                if (!area_cfg.check) {
+                                    this.multiplier_area_counts[i] += 1;
+                                }
+                                const index = this.balls.indexOf(ball);
+                                if (index > -1) this.balls.splice(index, 1);
+                                this.ball_launch_queue.push([ball.team, new_value]);
+                                return true;
+                            } else {
+                                ball.radius_factor = 1.0;
+                                ball.update_radius();
+                            }
+                        }
+                        current_x += area_width;
+                    }
+                }
+                return false;
+            }
+
+            check_settlement_collision(ball) {
+                const settlement_y = SCREEN_HEIGHT - SCREEN_HEIGHT / 16;
+                const settlement_height = SCREEN_HEIGHT / 16;
+                if (settlement_y < ball.y + ball.radius && !ball.score_added) {
+                    let start_x = 0;
+                    for (let area of this.area_define.areas) {
+                        const area_width = area.width * SCREEN_WIDTH;
+                        const area_left = start_x;
+                        const area_right = start_x + area_width;
+                        if (area_left < ball.x && ball.x < area_right && !ball.settled) {
+                            this.team_scores[ball.team] += ball.value;
+                            this.settlement_records[ball.team].push([ball.value, area.name]);
+                            ball.settled = true;
+                            ball.score_added = true;
+                            ball.settlement_area = area.name;
+                            ball.value = ball.initial_value;
+                            ball.radius_factor = 1.0;
+                            ball.update_radius();
+                            ball.x = SCREEN_WIDTH / 2;
+                            ball.y = this.launcher_y;
+                            const angle_rad = this.launcher_angle * Math.PI / 180;
+                            const speed = LAUNCH_BALL_SPEED;
+                            ball.vx = Math.sin(angle_rad) * speed;
+                            ball.vy = -Math.cos(angle_rad) * speed;
+                            ball.settled = false;
+                            return true;
+                        }
+                        start_x += area_width;
+                    }
+                }
+                return false;
+            }
+
+            process_launch_queue() {
+                if (this.ball_launch_queue.length > 0 && (this.frame_count - this.last_launch_frame) >= MIN_LAUNCH_INTERVAL) {
+                    const [team, value] = this.ball_launch_queue.shift();
+                    this.add_ball(1, team, value);
+                    this.last_launch_frame = this.frame_count;
+                }
+            }
+
+            update() {
+                const current_time = performance.now();
+                if (current_time - this.last_calc_time < this.calc_delay) return;
+
+                this.frame_count++;
+                this.process_launch_queue();
+
+                this.update_launcher();
+                this.update_moving_dot();
+
+                for (let ball of this.balls) {
+                    ball.update();
+                    this.check_dot_collision(ball);
+                    this.check_barrier_collision(ball);
+                    this.check_multiplier_collision(ball);
+                    this.check_settlement_collision(ball);
+                }
+
+                this.check_ball_collisions();
+
+                this.balls = this.balls.filter(ball => !ball.score_added);
+
+                if (current_time - this.last_calc_time > 0) {
+                    this.calc_fps = 1000 / (current_time - this.last_calc_time);
+                }
+                this.last_calc_time = current_time;
+            }
+
+            draw() {
+                ctx.fillStyle = `rgb(${BACKGROUND.join(',')})`;
+                ctx.fillRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
+
+                // Draw launcher
+                const launcher_length = SCREEN_WIDTH / 4;
+                const angle_rad = this.launcher_angle * Math.PI / 180;
+                const end_x = SCREEN_WIDTH / 2 + Math.sin(angle_rad) * launcher_length;
+                const end_y = this.launcher_y - Math.cos(angle_rad) * launcher_length;
+                ctx.beginPath();
+                ctx.moveTo(SCREEN_WIDTH / 2, this.launcher_y);
+                ctx.lineTo(end_x, end_y);
+                ctx.strokeStyle = `rgb(${LAUNCHER_COLOR.join(',')})`;
+                ctx.lineWidth = 8;
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.arc(SCREEN_WIDTH / 2, this.launcher_y, 15, 0, 2 * Math.PI);
+                ctx.fillStyle = 'rgb(80,130,180)';
+                ctx.fill();
+
+                // Draw first row dots
+                for (let dot of this.first_row_dots) {
+                    ctx.beginPath();
+                    ctx.arc(dot[0], dot[1], this.dot_radius, 0, 2 * Math.PI);
+                    ctx.fillStyle = `rgb(${GRAY_DOT_COLOR.join(',')})`;
+                    ctx.fill();
+                }
+
+                // Draw multiplier area
+                const multiplier_y = SCREEN_HEIGHT * 5 / 12;
+                const multiplier_height = SCREEN_HEIGHT / 24;
+                const widths = MULT_AREA.map(a => a.width);
+                const total_width = widths.reduce((a, b) => a + b, 0);
+                let start_x = (SCREEN_WIDTH - total_width * SCREEN_WIDTH) / 2;
+
+                const threshold = 512;
+                ctx.font = FONT;
+                ctx.fillStyle = 'rgb(255,255,255)';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'bottom';
+                const threshold_text = `Threshold: ${fmnumber(threshold)}`;
+                const text_width = ctx.measureText(threshold_text).width;
+                ctx.fillText(threshold_text, SCREEN_WIDTH / 2, multiplier_y - 10);
+
+                let current_start_x = start_x;
+                for (let i = 0; i < MULT_AREA.length; i++) {
+                    const area_cfg = MULT_AREA[i];
+                    const area_width = area_cfg.width * SCREEN_WIDTH;
+                    ctx.fillStyle = `rgb(${area_cfg.color.join(',')})`;
+                    ctx.fillRect(current_start_x, multiplier_y, area_width, multiplier_height);
+                    ctx.strokeStyle = 'rgb(200,200,200)';
+                    ctx.lineWidth = 1;
+                    ctx.strokeRect(current_start_x, multiplier_y, area_width, multiplier_height);
+
+                    if (!area_cfg.check) {
+                        ctx.font = FONT_SMALL;
+                        ctx.fillStyle = 'rgb(255,255,255)';
+                        ctx.textAlign = 'center';
+                        ctx.textBaseline = 'bottom';
+                        const count_text = `${this.multiplier_area_counts[i]}`;
+                        ctx.fillText(count_text, current_start_x + area_width / 2, multiplier_y - 5);
+                    }
+
+                    ctx.font = FONT;
+                    ctx.fillStyle = 'rgb(255,255,255)';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    const text = area_cfg.text;
+                    ctx.fillText(text, current_start_x + area_width / 2, multiplier_y + multiplier_height / 2);
+
+                    current_start_x += area_width;
+                }
+
+                // Draw moving dot
+                const moving_dot_y = multiplier_y - multiplier_height * 1 / 16;
+                ctx.beginPath();
+                ctx.arc(this.moving_dot_x, moving_dot_y, this.dot_radius, 0, 2 * Math.PI);
+                ctx.fillStyle = `rgb(${MOVING_DOT_COLOR.join(',')})`;
+                ctx.fill();
+
+                // Draw second row dots
+                for (let dot of this.second_row_dots) {
+                    ctx.beginPath();
+                    ctx.arc(dot[0], dot[1], this.dot_radius, 0, 2 * Math.PI);
+                    ctx.fillStyle = `rgb(${GRAY_DOT_COLOR.join(',')})`;
+                    ctx.fill();
+                }
+
+                // Draw settlement area
+                const settlement_y = SCREEN_HEIGHT - SCREEN_HEIGHT / 16;
+                const settlement_height = SCREEN_HEIGHT / 16;
+                start_x = 0;
+                for (let i = 0; i < this.area_define.areas.length; i++) {
+                    const area = this.area_define.areas[i];
+                    const area_width = area.width * SCREEN_WIDTH;
+                    ctx.fillStyle = `rgb(${SETTLEMENT_COLORS[i % SETTLEMENT_COLORS.length].join(',')})`;
+                    ctx.fillRect(start_x, settlement_y, area_width, settlement_height);
+                    ctx.strokeStyle = 'rgb(200,200,200)';
+                    ctx.lineWidth = 1;
+                    ctx.strokeRect(start_x, settlement_y, area_width, settlement_height);
+                    ctx.font = FONT;
+                    ctx.fillStyle = 'rgb(255,255,255)';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText(area.name, start_x + area_width / 2, settlement_y + settlement_height / 2);
+                    start_x += area_width;
+                }
+
+                // Draw multiplier barriers
+                for (let barrier of this.multiplier_barriers) {
+                    ctx.fillStyle = `rgb(${barrier.color.join(',')})`;
+                    ctx.fillRect(barrier.rect.left, barrier.rect.top, barrier.rect.width, barrier.rect.height);
+                    ctx.strokeStyle = 'rgb(150,150,150)';
+                    ctx.lineWidth = 1;
+                    ctx.strokeRect(barrier.rect.left, barrier.rect.top, barrier.rect.width, barrier.rect.height);
+                }
+
+                // Draw settlement dots
+                for (let dot of this.settlement_dots) {
+                    ctx.beginPath();
+                    ctx.arc(dot[0], dot[1], this.dot_radius, 0, 2 * Math.PI);
+                    ctx.fillStyle = `rgb(${GRAY_DOT_COLOR.join(',')})`;
+                    ctx.fill();
+                }
+
+                // Draw all balls
+                for (let ball of this.balls) {
+                    ball.draw();
+                }
+
+                // Draw info panels
+                this.draw_info_panel();
+
+                const current_time = performance.now();
+                if (current_time - this.last_render_time > 0) {
+                    this.render_fps = 1000 / (current_time - this.last_render_time);
+                }
+                this.last_render_time = current_time;
+            }
+
+            draw_info_panel() {
+                // Main info panel
+                ctx.fillStyle = 'rgba(30,30,40,0.784)';
+                ctx.fillRect(10, 10, 300, 180);
+                ctx.font = FONT_TITLE;
+                ctx.fillStyle = 'rgb(70,180,255)';
+                ctx.textAlign = 'left';
+                ctx.textBaseline = 'top';
+                ctx.fillText("Ball Collision Game", 20, 20);
+                ctx.font = FONT;
+                ctx.fillStyle = 'rgb(180,250,100)';
+                ctx.fillText(`Calc FPS: ${this.calc_fps.toFixed(1)}`, 20, 60);
+                ctx.fillText(`Render FPS: ${this.render_fps.toFixed(1)}`, 20, 90);
+                ctx.fillStyle = 'rgb(250,200,100)';
+                ctx.fillText(`Active Balls: ${this.balls.length}`, 20, 120);
+                ctx.fillStyle = 'rgb(100,200,250)';
+                ctx.fillText(`Angle: ${this.launcher_angle.toFixed(1)}°`, 20, 150);
+
+                // Team info panel
+                ctx.fillStyle = 'rgba(30,30,40,0.784)';
+                ctx.fillRect(SCREEN_WIDTH - 210, 10, 200, 180);
+                ctx.font = FONT;
+                ctx.fillStyle = 'rgb(200,200,255)';
+                ctx.fillText("Team Info", SCREEN_WIDTH - 200, 15);
+                let i = 0;
+                for (let team in TEAM_COLORS) {
+                    const color = TEAM_COLORS[team];
+                    const count = this.balls.filter(b => b.team === team).length;
+                    const score = this.team_scores[team];
+                    ctx.fillStyle = `rgb(${color.join(',')})`;
+                    ctx.fillText(`${team}: ${count} balls`, SCREEN_WIDTH - 200, 50 + i * 40);
+                    ctx.fillStyle = 'rgb(200,200,200)';
+                    ctx.fillText(`Score: ${fmnumber(score)}`, SCREEN_WIDTH - 200, 70 + i * 40);
+                    i++;
+                }
+
+                // Launch queue
+                ctx.fillStyle = 'rgb(200,150,100)';
+                ctx.fillText(`Launch Queue: ${this.ball_launch_queue.length}`, SCREEN_WIDTH - 200, 200);
+            }
+        }
+
+        // Main game setup
+        const teams = {
+            "Red": [220, 60, 60],
+            "Blue": [60, 120, 220],
+            "Green": [60, 180, 80],
+            "Yellow": [220, 180, 60]
+        };
+
+        let game = new BallCollisionGame(teams, 0, 2);
+
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape') {
+                // No quit in browser
+            } else if (event.key === 'r') {
+                game = new BallCollisionGame(teams, 0, 2);
+            } else if (event.key === '1') {
+                game.ball_launch_queue.push(["Red", Math.floor(Math.random() * 6) + 5]);
+            } else if (event.key === '2') {
+                game.ball_launch_queue.push(["Blue", Math.floor(Math.random() * 6) + 5]);
+            } else if (event.key === '3') {
+                game.ball_launch_queue.push(["Green", Math.floor(Math.random() * 6) + 5]);
+            } else if (event.key === '4') {
+                game.ball_launch_queue.push(["Yellow", Math.floor(Math.random() * 6) + 5]);
+            } else if (event.key === 'c') {
+                game.multiplier_area_counts = new Array(MULT_AREA.length).fill(0);
+            }
+        });
+
+        function gameLoop() {
+            game.update();
+            game.draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        gameLoop();
+    </script>
+</body>
+</html>
