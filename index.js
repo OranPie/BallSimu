@@ -434,9 +434,9 @@ class TeamBase extends Entity {
         }
         if (this.current_bullet && this.current_bullet[0] > 0) {
             const log_val = Math.log(this.total_bullets);
-            this.shooting_rate = Math.max(1, Math.min(10, log_val / 8));
+            this.shooting_rate = Math.max(1, Math.min(20, log_val / 8));
         }
-        const continuous_bonus = Math.min(1.0, 1.0 + (this.continuous_fire_time / 30000) * 0.02);
+        const continuous_bonus = Math.min(3.0, 1.0 + (this.continuous_fire_time / 30000) * 0.05);
         if (this.continuous_fire_time > (5000 * (this.advance || 1)) && this.current_bullet[0] > 500) {
             this.current_bullet[0] = Math.floor(this.current_bullet[0] / 2);
             this.current_bullet[2] *= 2;
