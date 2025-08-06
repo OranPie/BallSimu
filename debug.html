@@ -1085,7 +1085,7 @@
                 team.shield += reward;
                 this.event_text = `${team.name} 获得护盾 +${this.format_number(reward)}!`;
             } else if (event_type === 'bullets') {
-                const bullet_types = [BulletType.NORMAL, BulletType.SPREADING, BulletType.ROTATING, BulletType.SHOT];
+                const bullet_types = [BulletType.NORMAL, BulletType.SPREADING, BulletType.ROTATING, BulletType.SHOT, BulletType.LASER, BulletType.SPLITTING];
                 team.add_bullets(reward, bullet_types[Math.floor(Math.random() * bullet_types.length)], 1);
                 this.event_text = `${team.name} 获得子弹 +${this.format_number(reward)}!`;
             } else if (event_type === 'ball') {
