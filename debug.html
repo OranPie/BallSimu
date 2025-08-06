@@ -769,6 +769,9 @@
                     break;
                 }
             }
+            if (team_obj === null) {
+                return;
+            }
             let color = [...team_obj.color];
             if (this.type === BulletType.SPREADING) color = [color[0] / 2, color[1], color[2] / 2];
             else if (this.type === BulletType.ROTATING) color = [color[0], color[1] / 2, color[2]];
