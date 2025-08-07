@@ -100,24 +100,28 @@
     <canvas id="game" width="1200" height="800"></canvas>
 
     <div id="controls-container">
-        <div id="config" class="panel">
-            <h2>游戏配置</h2>
-            <label>随机事件最小帧间隔: <input id="event_min_frames" type="number" value="100"></label>
-            <label>随机事件触发概率: <input id="event_prob" type="number" step="0.01" value="0.1"></label>
-            <label>奖励等级 (逗号分隔): <input id="rewards" value="15000,150000,300000,600000,1200000,2400000,5000000"></label>
-            <label>奖励权重 (逗号分隔): <input id="weights" value="0.5,0.2,0.2,0.05,0.03,0.01,0.01"></label>
-            <label>队伍数量:
-                <select id="team_count">
-                    <option value="2">2</option>
-                    <option value="3">3</option>
-                    <option value="4" selected>4</option>
-                    <option value="5">5</option>
-                    <option value="6">6</option>
-                    <option value="7">7</option>
-                    <option value="8">8</option>
-                </select>
-            </label>
-            <button onclick="applyConfig()">应用配置并重启游戏</button>
+            <div id="config" class="panel">
+                <h2>游戏配置</h2>
+                <label>随机事件最小帧间隔: <input id="event_min_frames" type="number" value="100"></label>
+                <label>随机事件触发概率: <input id="event_prob" type="number" step="0.01" value="0.1"></label>
+                <label>奖励等级 (逗号分隔): <input id="rewards" value="15000,150000,300000,600000,1200000,2400000,5000000"></label>
+                <label>奖励权重 (逗号分隔): <input id="weights" value="0.5,0.2,0.2,0.05,0.03,0.01,0.01"></label>
+                <label>队伍数量:
+                    <select id="team_count">
+                        <option value="2">2</option>
+                        <option value="3">3</option>
+                        <option value="4" selected>4</option>
+                        <option value="5">5</option>
+                        <option value="6">6</option>
+                        <option value="7">7</option>
+                        <option value="8">8</option>
+                    </select>
+                </label>
+                <div class="button-group">
+                    <button onclick="applyConfig()">应用配置并重启游戏</button>
+                    <button id="debug-toggle" onclick="toggleDebug()">显示调试信息</button>
+                </div>
+            </div>
         </div>
 
         <div id="controls" class="panel">
@@ -206,6 +210,8 @@
     const BULLET_CLAIM_STEP = 7;
     const BALL_CLAIM_STEP = 18;
     let TICKING = 60;
+    let UNLIMITED_FPS = false;
+    let DEBUG_ENABLED = false; // Default to true to show debug info initially
     const REVIVAL_TIME = 60000;
     const REVIVAL_COST = 1000000;
     const LASER_DURATION = 120;
@@ -1035,7 +1041,7 @@
             this.grid = new Map();
             this.cell_size = 50; // Reduced cell size for finer grid, potentially more efficient for dense areas
             this.profiler = new Profiler();
-            this.max_workers = 4;
+            this.last_update_time = performance.now();
         }
         init_territory() {
             this.territory_ctx.fillStyle = rgb(BACKGROUND);
@@ -1219,6 +1225,12 @@
             this.message_time = performance.now();
         }
         update() {
+            const current_time = performance.now();
+            const delta_time = current_time - this.last_update_time;
+            // Cap updates to max 60 FPS
+            if (delta_time < 1000 / TICKING && UNLIMITED_FPS === false) return;
+            this.last_update_time = current_time;
+
             this.frame_count += 1;
             this.profiler.start_section("clear_map");
             if (CLEAR_MAP_FRAME > 0 && this.frame_count % CLEAR_MAP_FRAME === 0) this.clear_map();
@@ -1403,6 +1415,7 @@
             this.draw_performance_info(ctx);
         }
         draw_performance_info(ctx) {
+            if (!DEBUG_ENABLED) return;
             let y = SCREEN_HEIGHT - 300;
             const [fps, duration] = this.profiler.get_fps();
             const fps_text = `FPS: ${fps.toFixed(1)} (Duration: ${duration.toFixed(3)})`;
@@ -1531,6 +1544,11 @@
             team.revive();
             game.show_message(`${team.name} 复活`);
         }
+    }
+    function toggleDebug() {
+        DEBUG_ENABLED = !DEBUG_ENABLED;
+        const button = document.getElementById('debug-toggle');
+        button.textContent = DEBUG_ENABLED ? '隐藏调试信息' : '显示调试信息';
     }
     initSelectTeam();
     requestAnimationFrame(loop);
