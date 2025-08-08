@@ -955,7 +955,7 @@
             this.base_speed = this.calculate_base_speed();
             this.move(game);
             this.handle_border_collision();
-            const cost = this.claim_territory(game, this.radius);
+            const cost = this.claim_territory(game, this.radius * 2);
             this.value = Math.max(0, this.value - cost);
             if (this.collision_cooldown > 0) this.collision_cooldown -= 1;
         }
@@ -1297,7 +1297,7 @@
                 }
                 const nearby = this.get_nearby_entities(bullet.pos);
                 for (let [etype, entity] of nearby) {
-                    if (etype === 'ball' && bullet._collide(entity)) {
+                    if (entity instanceof Ball && bullet._collide(entity)) {
                         if (bullet.team === entity.team) {
                             entity.value += bullet.value;
                             bullet.value = 0;
@@ -1326,7 +1326,7 @@
                 }
                 const nearby = this.get_nearby_entities(ball.pos);
                 for (let [etype, entity] of nearby) {
-                    if (etype === 'ball' && entity !== ball && ball.team !== entity.team && ball._collide(entity)) {
+                    if (entity instanceof Ball && entity !== ball && ball.team !== entity.team && ball._collide(entity)) {
                         ball.handle_collision_with_ball(entity, this);
                         ball.radius = ball.calculate_radius();
                         entity.radius = entity.calculate_radius();
