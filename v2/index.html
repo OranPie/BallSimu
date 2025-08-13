@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>球体战争 - 配置版</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="game-container">
+    <canvas id="game" width="1200" height="800"></canvas>
+
+    <div id="controls-container">
+        <div id="config" class="panel">
+            <h2>游戏配置</h2>
+            <label>随机事件最小帧间隔: <input id="event_min_frames" type="number" value="100"></label>
+            <label>随机事件触发概率: <input id="event_prob" type="number" step="0.01" value="0.1"></label>
+            <label>奖励等级 (逗号分隔): <input id="rewards" value="15000,150000,300000,600000,1200000,2400000,5000000"></label>
+            <label>奖励权重 (逗号分隔): <input id="weights" value="0.5,0.2,0.2,0.05,0.03,0.01,0.01"></label>
+            <label>队伍数量:
+                <select id="team_count">
+                    <option value="2">2</option>
+                    <option value="3">3</option>
+                    <option value="4" selected>4</option>
+                    <option value="5">5</option>
+                    <option value="6">6</option>
+                    <option value="7">7</option>
+                    <option value="8">8</option>
+                </select>
+            </label>
+            <div class="button-group">
+                <button onclick="applyConfig()">应用配置并重启游戏</button>
+                <button id="debug-toggle" onclick="toggleDebug()">显示调试信息</button>
+            </div>
+        </div>
+
+        <div id="controls" class="panel">
+            <h2>团队控制</h2>
+            <label>选择队伍:
+                <select id="select_team"></select>
+            </label>
+
+            <div class="button-group">
+                <button class="revive-button" onclick="reviveTeam()">复活队伍</button>
+            </div>
+
+            <h3>添加子弹</h3>
+            <label>子弹类型:
+                <select id="bullet_type">
+                    <option value="NORMAL">普通</option>
+                    <option value="SPREADING">散射</option>
+                    <option value="ROTATING">旋转</option>
+                    <option value="SHOT">扇形</option>
+                    <option value="LASER">激光</option>
+                    <option value="SPLITTING">分裂</option>
+                </select>
+            </label>
+            <label>数量: <input id="bullet_amount" type="number" value="1000"></label>
+            <label>价值: <input id="bullet_value" type="number" value="1"></label>
+            <button onclick="addBullets()">添加子弹</button>
+
+            <h3>添加球体</h3>
+            <label>球体类型:
+                <select id="ball_type">
+                    <option value="NORMAL">普通</option>
+                    <option value="FASTER">更快</option>
+                    <option value="STRESSED">应力</option>
+                </select>
+            </label>
+            <label>数量: <input id="ball_amount" type="number" value="1"></label>
+            <label>价值: <input id="ball_value" type="number" value="10000"></label>
+            <button onclick="addBalls()">添加球体</button>
+
+            <h3>添加护盾</h3>
+            <label>数量: <input id="shield_amount" type="number" value="100000"></label>
+            <button onclick="addShield()">添加护盾</button>
+        </div>
+    </div>
+</div>
+
+<script src="game.js"></script>
+</body>
+</html>

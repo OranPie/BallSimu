@@ -1,74 +1,3 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>球体战争 - 配置版</title>
-    <style>
-        body {
-            background-color: #f0f0f0;
-            font-family: sans-serif;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            padding: 20px;
-        }
-        #game {
-            border: 2px solid #333;
-            background-color: #000;
-        }
-        #config {
-            margin-top: 20px;
-            padding: 15px;
-            border: 1px solid #ccc;
-            background-color: #fff;
-            width: 400px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-        }
-        #config label {
-            display: block;
-            margin-bottom: 10px;
-        }
-        #config input, #config select {
-            width: 100%;
-            padding: 5px;
-        }
-        #config button {
-            width: 100%;
-            padding: 10px;
-            background-color: #4CAF50;
-            color: white;
-            border: none;
-            cursor: pointer;
-        }
-        #config button:hover {
-            background-color: #45a049;
-        }
-    </style>
-</head>
-<body>
-<canvas id="game" width="1200" height="800"></canvas>
-<div id="config">
-    <label>随机事件最小帧间隔: <input id="event_min_frames" type="number" value="100"></label>
-    <label>随机事件触发概率: <input id="event_prob" type="number" step="0.01" value="0.1"></label>
-    <label>奖励等级 (逗号分隔): <input id="rewards" value="15000,150000,300000,600000,1200000,2400000,5000000"></label>
-    <label>奖励权重 (逗号分隔): <input id="weights" value="0.5,0.2,0.2,0.05,0.03,0.01,0.01"></label>
-    <label>队伍数量:
-        <select id="team_count">
-            <option value="2">2</option>
-            <option value="3">3</option>
-            <option value="4" selected>4</option>
-            <option value="5">5</option>
-            <option value="6">6</option>
-            <option value="7">7</option>
-            <option value="8">8</option>
-            <option value="9">9</option>
-            <option value="10">10</option>
-            
-        </select>
-    </label>
-    <button onclick="applyConfig()">应用配置并重启游戏</button>
-</div>
-<script>
     // Constants and helper functions
     const SCREEN_WIDTH = 1200;
     const SCREEN_HEIGHT = 800;
@@ -100,8 +29,7 @@
     const TURRET_ANGLE_SPEED = 0.4;
     const BULLET_SPEED = 0.003 * SCREEN_WIDTH;
     const BASE_BALL_SPEED = 0.005 * SCREEN_WIDTH;
-    const SINGLE_BLOCK_WIDTH = 0.0005 * SCREEN_WIDTH;
-    const TERRITORY_CLAIM_COST = [1, 2];
+    const TERRITORY_CLAIM_COST = [20, 40];
     const CLEAR_MAP_FRAME = -1;
     const BASE_SHIELD = 2000000;
     const ATTRACTION_RADIUS = 0.4 * SCREEN_WIDTH;
@@ -111,6 +39,8 @@
     const BULLET_CLAIM_STEP = 7;
     const BALL_CLAIM_STEP = 18;
     let TICKING = 60;
+    let UNLIMITED_FPS = true;
+    let DEBUG_ENABLED = false; // Default to true to show debug info initially
     const REVIVAL_TIME = 60000;
     const REVIVAL_COST = 1000000;
     const LASER_DURATION = 120;
@@ -332,10 +262,11 @@
             return game.claim_territory_along_line(this.last_pos, this.pos, this.team, step_size);
         }
         _collide(other) {
-            const radius = this.radius + other.radius;
             const dx = this.pos[0] - other.pos[0];
             const dy = this.pos[1] - other.pos[1];
-            return Math.sqrt(dx * dx + dy * dy) < radius;
+            const dist_sq = dx * dx + dy * dy;
+            const rad_sum = this.radius + other.radius;
+            return dist_sq < rad_sum * rad_sum;
         }
         handle_collision_with_ball(ball, game) {
             if (this.collision_cooldown > 0 || ball.collision_cooldown > 0) return false;
@@ -370,13 +301,18 @@
             }
             this.radius = this.calculate_radius();
             ball.radius = ball.calculate_radius();
+            if (!(this instanceof Bullet)){
+                this.collision_cooldown = 5; // Add cooldown to prevent multiple collisions in one frame
+                ball.collision_cooldown = 5;
+            }
+
             return true;
         }
         handle_collision_with_base(base, game) {
             const dx = this.pos[0] - base.pos[0];
             const dy = this.pos[1] - base.pos[1];
             const dist = Math.sqrt(dx * dx + dy * dy);
-            if (base.team === this.team) {
+            if (base === this.team) {
                 return false;
             }
             if (dist < BASE_ATTACK_RADIUS) {
@@ -405,7 +341,8 @@
     class TeamBase extends Entity {
         constructor(name, rel_pos, color) {
             const pos = [rel_pos[0] * SCREEN_WIDTH, rel_pos[1] * SCREEN_HEIGHT];
-            super(name, pos);
+            super(null, pos);
+            this.team = this;
             this.name = name;
             this.color = color;
             this.advance = 1;
@@ -488,8 +425,8 @@
                 this.last_fire_time = current_time;
             }
             if (this.current_bullet && this.current_bullet[0] > 0) {
-                const log_val = Math.log2(this.bullets.reduce((sum, q) => sum + q[0], 0));
-                this.shooting_rate = Math.max(1, Math.min(30, log_val / 3));
+                const log_val = Math.log10(this.bullets.reduce((sum, q) => sum + q[0], 0));
+                this.shooting_rate = Math.max(1, Math.min(30, log_val / 2));
             }
             const continuous_bonus = Math.min(2.0, 1.0 + (this.continuous_fire_time / 30000) * 0.05);
             if (this.continuous_fire_time > (2500 * (this.advance || 1)) && this.current_bullet[0] > 500) {
@@ -611,14 +548,15 @@
             ctx.fillStyle = 'rgb(255,255,255)';
             ctx.textAlign = 'center';
             const shield_text = `护盾: ${this.format_value(this.shield)}`;
-            const text_width = ctx.measureText(shield_text).width;
-            ctx.fillText(shield_text, this.pos[0] - text_width / 2, this.pos[1] + 30);
+            ctx.fillText(shield_text, this.pos[0], this.pos[1] + 40);
             const shield_percent = Math.min(1.0, this.shield / BASE_SHIELD);
             ctx.fillStyle = rgb([100, 100, 100]);
             ctx.fillRect(this.pos[0] - 40, this.pos[1] + 60, 80, 10);
             ctx.fillStyle = rgb(this.color);
             ctx.fillRect(this.pos[0] - 40, this.pos[1] + 60, 80 * shield_percent, 10);
+            const territory_text = `领地: ${this.territory}%`;
             ctx.fillStyle = 'rgb(200,200,200)';
+            ctx.fillText(territory_text, this.pos[0], this.pos[1] + 80);
             if (this.target_lock) {
                 ctx.beginPath();
                 ctx.arc(this.pos[0], this.pos[1], 30, 0, Math.PI * 2);
@@ -630,15 +568,13 @@
                 ctx.font = SMALL_FONT;
                 ctx.fillStyle = 'rgb(200,255,200)';
                 const rate_text = `射击速率: ${this.shooting_rate.toFixed(1)}x`;
-                const rate_width = ctx.measureText(rate_text).width;
-                ctx.fillText(rate_text, this.pos[0] - rate_width / 2, this.pos[1] - 100);
+                ctx.fillText(rate_text, this.pos[0], this.pos[1] - 100);
             }
             if (!this.active && this.death_time > 0) {
                 const time_left = Math.max(0, Math.floor((this.death_time + REVIVAL_TIME - performance.now()) / 1000));
                 const revive_text = `复活倒计时: ${time_left}s`;
-                const revive_width = ctx.measureText(revive_text).width;
                 ctx.fillStyle = 'rgb(200,200,100)';
-                ctx.fillText(revive_text, this.pos[0] - revive_width / 2, this.pos[1] - 120);
+                ctx.fillText(revive_text, this.pos[0], this.pos[1] - 120);
             }
         }
         draw_bullet_queue(ctx) {
@@ -646,8 +582,7 @@
             ctx.fillStyle = 'rgb(255,255,255)';
             const total_bullets = this.bullets.reduce((sum, q) => sum + q[0], 0);
             const queue_text = `子弹队列: ${total_bullets}`;
-            const queue_width = ctx.measureText(queue_text).width;
-            ctx.fillText(queue_text, this.pos[0] - queue_width / 2, this.pos[1] - 50);
+            ctx.fillText(queue_text, this.pos[0], this.pos[1] - 50);
             let start_y = this.pos[1] > 400 ? this.pos[1] - 80 : this.pos[1] + 140;
             const dir = this.pos[1] > 400 ? -30 : 30;
             const max_display = 2;
@@ -665,9 +600,8 @@
             }
             if (this.bullets.length > max_display) {
                 const more_text = `...还有${this.bullets.length - max_display}个`;
-                const more_width = ctx.measureText(more_text).width;
                 ctx.fillStyle = 'rgb(150,150,150)';
-                ctx.fillText(more_text, this.pos[0] - more_width / 2, start_y + (displayed) * dir);
+                ctx.fillText(more_text, this.pos[0], start_y + (displayed) * dir);
             }
         }
         draw_bullet_info(ctx, x, y, amount, bullet_type, value, is_current = false) {
@@ -723,10 +657,18 @@
             }
             return [0, 0];
         }
+
+        revive() {
+            this.shield = BASE_SHIELD;
+            this.add_bullets(INITIAL_BULLETS, BulletType.NORMAL, 1)
+            this.active = true;
+            this.reviving = false;
+
+        }
     }
     class Bullet extends Entity {
         constructor(team, bullet_type, value, pos, angle) {
-            super(team.name, pos, angle);
+            super(team, pos, angle);
             this.type = bullet_type;
             this.value = value;
             this.base_speed = BULLET_SPEED;
@@ -762,17 +704,10 @@
             return this.value <= 0;
         }
         draw(ctx) {
-            let team_obj = null;
-            for (let i = 0; i < game.teams.length; i++) {
-                if (game.teams[i].name === this.team) {
-                    team_obj = game.teams[i];
-                    break;
-                }
-            }
-            if (team_obj === null) {
+            if (!this.team) {
                 return;
             }
-            let color = [...team_obj.color];
+            let color = [...this.team.color];
             if (this.type === BulletType.SPREADING) color = [color[0] / 2, color[1], color[2] / 2];
             else if (this.type === BulletType.ROTATING) color = [color[0], color[1] / 2, color[2]];
             else if (this.type === BulletType.SHOT) color = [color[0], color[1], color[0]];
@@ -843,7 +778,7 @@
             this.base_speed = this.calculate_base_speed();
             this.move(game);
             this.handle_border_collision();
-            const cost = this.claim_territory(game, this.radius);
+            const cost = this.claim_territory(game, this.radius * 2);
             this.value = Math.max(0, this.value - cost);
             if (this.collision_cooldown > 0) this.collision_cooldown -= 1;
         }
@@ -853,26 +788,12 @@
                 const alpha = Math.floor(200 * (i / this.trail.length));
                 ctx.beginPath();
                 ctx.arc(pos[0], pos[1], Math.max(1, Math.floor(this.radius * 0.3)), 0, Math.PI * 2);
-                let team_obj = null;
-                for (let i = 0; i < game.teams.length; i++) {
-                    if (game.teams[i].name === this.team) {
-                        team_obj = game.teams[i];
-                        break;
-                    }
-                }
-                ctx.fillStyle = rgba(team_obj.color, alpha / 255);
+                ctx.fillStyle = rgba(this.team.color, alpha / 255);
                 ctx.fill();
             }
             ctx.beginPath();
             ctx.arc(this.pos[0], this.pos[1], this.radius, 0, Math.PI * 2);
-            let team_obj = null;
-            for (let i = 0; i < game.teams.length; i++) {
-                if (game.teams[i].name === this.team) {
-                    team_obj = game.teams[i];
-                    break;
-                }
-            }
-            ctx.fillStyle = rgb(team_obj.color);
+            ctx.fillStyle = rgb(this.team.color);
             ctx.fill();
             ctx.lineWidth = 2;
             ctx.strokeStyle = rgb([30, 30, 30]);
@@ -908,8 +829,6 @@
             this.balls = [];
             this.running = true;
             this.frame_count = 0;
-            this.console_input = '';
-            this.console_active = false;
             this.message = '';
             this.message_time = 0;
             this.last_event_frame = 0;
@@ -921,27 +840,31 @@
             this.territory_surface.height = SCREEN_HEIGHT;
             this.territory_ctx = this.territory_surface.getContext('2d');
             this.territory_grid = {};
-            this.block_size = Math.floor(SINGLE_BLOCK_WIDTH * 5);
+            this.block_size = Math.floor(SCREEN_WIDTH / 200);
+            this.total_blocks = 0;
+            this.territory_owners = new Map();
             this.init_territory();
             this.particles = [];
             this.damage_texts = [];
             this.start_time = performance.now();
             this.grid = new Map();
-            this.cell_size = 100;
+            this.cell_size = 50; // Reduced cell size for finer grid, potentially more efficient for dense areas
             this.profiler = new Profiler();
-            this.max_workers = 4;
+            this.last_update_time = performance.now();
         }
         init_territory() {
             this.territory_ctx.fillStyle = rgb(BACKGROUND);
             this.territory_ctx.fillRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
             this.territory_grid = {};
+            this.total_blocks = 0;
+            this.territory_owners.set(null, 0);
+            this.teams.forEach(team => this.territory_owners.set(team, 0));
             for (let x = 0; x < SCREEN_WIDTH; x += this.block_size) {
                 for (let y = 0; y < SCREEN_HEIGHT; y += this.block_size) {
                     const key = `${x}_${y}`;
                     this.territory_grid[key] = null;
-                    this.territory_ctx.strokeStyle = rgb(NEUTRAL_COLOR);
-                    this.territory_ctx.lineWidth = 1;
-                    this.territory_ctx.strokeRect(x, y, this.block_size, this.block_size);
+                    this.total_blocks += 1;
+                    this.territory_owners.set(null, this.territory_owners.get(null) + 1);
                 }
             }
             for (let team of this.teams) {
@@ -953,6 +876,11 @@
                         const y = grid_y + dy * this.block_size;
                         const key = `${x}_${y}`;
                         if (key in this.territory_grid) {
+                            const current_owner = this.territory_grid[key];
+                            if (current_owner !== team) {
+                                this.territory_owners.set(current_owner, this.territory_owners.get(current_owner) - 1);
+                                this.territory_owners.set(team, this.territory_owners.get(team) + 1);
+                            }
                             this.territory_grid[key] = team;
                             this.territory_ctx.fillStyle = rgb(team.color);
                             this.territory_ctx.fillRect(x, y, this.block_size, this.block_size);
@@ -997,17 +925,8 @@
             return this.territory_grid[key] || null;
         }
         update_territory() {
-            const territory_count = {};
-            this.teams.forEach(team => territory_count[team] = 0);
-            territory_count[null] = 0;
-            const total_blocks = Object.keys(this.territory_grid).length;
-            if (total_blocks === 0) return;
-            for (let key in this.territory_grid) {
-                const owner = this.territory_grid[key];
-                territory_count[owner] += 1;
-            }
             this.teams.forEach(team => {
-                team.territory = Math.round(territory_count[team] / total_blocks * 100 * 10) / 10;
+                team.territory = Math.round(this.territory_owners.get(team) / this.total_blocks * 100 * 10) / 10;
             });
         }
         claim_territory_at_point(pos, team) {
@@ -1018,15 +937,10 @@
             const current_owner = this.territory_grid[key];
             if (current_owner === team) return 0;
             const cost = current_owner === null ? TERRITORY_CLAIM_COST[0] : TERRITORY_CLAIM_COST[1];
+            this.territory_owners.set(current_owner, this.territory_owners.get(current_owner) - 1);
+            this.territory_owners.set(team, this.territory_owners.get(team) + 1);
             this.territory_grid[key] = team;
-            let team_obj = null;
-            for (let i = 0; i < this.teams.length; i++) {
-                if (this.teams[i].name === team) {
-                    team_obj = this.teams[i];
-                    break;
-                }
-            }
-            this.territory_ctx.fillStyle = rgb(team_obj.color);
+            this.territory_ctx.fillStyle = rgb(team.color);
             this.territory_ctx.fillRect(grid_x, grid_y, this.block_size, this.block_size);
             return cost;
         }
@@ -1088,7 +1002,7 @@
                 team.shield += reward;
                 this.event_text = `${team.name} 获得护盾 +${this.format_number(reward)}!`;
             } else if (event_type === 'bullets') {
-                const bullet_types = [BulletType.NORMAL, BulletType.SPREADING, BulletType.ROTATING, BulletType.SHOT, BulletType.LASER, BulletType.SPLITTING];
+                const bullet_types = [BulletType.NORMAL, BulletType.SPREADING, BulletType.ROTATING, BulletType.SHOT];
                 team.add_bullets(reward, bullet_types[Math.floor(Math.random() * bullet_types.length)], 1);
                 this.event_text = `${team.name} 获得子弹 +${this.format_number(reward)}!`;
             } else if (event_type === 'ball') {
@@ -1105,51 +1019,17 @@
             if (num >= 1000) return `${(num / 1000).toFixed(1)}K`;
             return num.toString();
         }
-        process_command(command) {
-            const parts = command.trim().split(/\s+/);
-            if (parts.length === 0) return;
-            const cmd = parts[0].toLowerCase();
-            if (cmd === '/bullet' && parts.length >= 5) {
-                const team_idx = parseInt(parts[1]);
-                const amount = parseInt(parts[2]);
-                const b_type = BulletType[parts[3].toUpperCase()];
-                const value = parseInt(parts[4]);
-                if (!isNaN(team_idx) && team_idx >= 0 && team_idx < this.teams.length && b_type) {
-                    this.add_bullet_to_queue(this.teams[team_idx], b_type, amount, value);
-                    this.show_message(`已为${this.teams[team_idx].name}添加子弹到队列`);
-                } else {
-                    this.show_message("错误: 无效的子弹命令格式");
-                }
-            } else if (cmd === '/ball' && parts.length >= 5) {
-                const team_idx = parseInt(parts[1]);
-                const amount = parseInt(parts[2]);
-                const b_type = BallType[parts[3].toUpperCase()];
-                const value = parseInt(parts[4]);
-                if (!isNaN(team_idx) && team_idx >= 0 && team_idx < this.teams.length && b_type) {
-                    for (let i = 0; i < amount; i++) {
-                        this.add_ball(this.teams[team_idx], b_type, value);
-                    }
-                    this.show_message(`已为${this.teams[team_idx].name}添加${amount}个球体`);
-                } else {
-                    this.show_message("错误: 无效的球体命令格式");
-                }
-            } else if (cmd === '/clear_map') {
-                this.clear_map();
-            } else if (cmd === '/tick') {
-                const tick = parseInt(parts[1]);
-                if (!isNaN(tick)) TICKING = tick;
-                else this.show_message("错误：数值错误");
-            } else if (cmd === '/help') {
-                this.show_message("可用命令: /bullet [队伍] [数量] [类型] [价值], /ball [队伍] [数量] [类型] [价值], /clear_map");
-            } else {
-                this.show_message("错误: 未知命令");
-            }
-        }
         show_message(msg) {
             this.message = msg;
             this.message_time = performance.now();
         }
         update() {
+            const current_time = performance.now();
+            const delta_time = current_time - this.last_update_time;
+            // Cap updates to max 60 FPS
+            if (delta_time < 1000 / TICKING && UNLIMITED_FPS === false) return;
+            this.last_update_time = current_time;
+
             this.frame_count += 1;
             this.profiler.start_section("clear_map");
             if (CLEAR_MAP_FRAME > 0 && this.frame_count % CLEAR_MAP_FRAME === 0) this.clear_map();
@@ -1200,40 +1080,49 @@
             this.build_spatial_grid();
             this.profiler.end_section();
             this.profiler.start_section("update_bullets");
-            const bullets_to_remove = [];
-            let new_bullets = [];
-            const split_angles = Array.from({length: SPLITTING_COUNT}, () => Math.random() * 90 - 45);
-            const active_enemy_teams = this.teams.filter(t => t.active);
-            for (let bullet of this.bullets) {
+            const newBullets = [];
+            const survivors = [];
+            const splitAngles = Array.from({length: SPLITTING_COUNT}, () => Math.random() * 90 - 45);
+            const activeTeams = this.teams.filter(t => t.active);
+            for (const bullet of this.bullets) {
                 bullet.update(this);
-                if (bullet.type === BulletType.SPLITTING && bullet.split) {
-                    bullets_to_remove.push(bullet);
-                    for (let angle of split_angles) {
-                        const new_b = new Bullet(bullet.team, BulletType.SPLITTING, Math.floor(bullet.value / SPLITTING_COUNT), [...bullet.pos], bullet.angle + angle);
-                        new_bullets.push(new_b);
+                if (bullet.type === BulletType.SPLITTING && bullet.split && bullet.team) {
+                    for (const angle of splitAngles) {
+                        newBullets.push(new Bullet(bullet.team, BulletType.SPLITTING, Math.floor(bullet.value / SPLITTING_COUNT), [...bullet.pos], bullet.angle + angle));
                     }
                     continue;
                 }
+                let remove = false;
                 const nearby = this.get_nearby_entities(bullet.pos);
-                for (let [etype, entity] of nearby) {
-                    if (etype === 'ball' && bullet._collide(entity)) {
+                for (const [etype, entity] of nearby) {
+                    if (entity instanceof Ball && bullet._collide(entity)) {
                         if (bullet.team === entity.team) {
                             entity.value += bullet.value;
-                            bullet.value = 0;
+                            remove = true;
+                            break;
                         } else {
                             bullet.handle_collision_with_ball(entity, this);
+                            if (bullet.value <= 0) {
+                                remove = true;
+                                break;
+                            }
                         }
-                        if (bullet.value <= 0) bullets_to_remove.push(bullet);
                     }
                 }
-                for (let team of active_enemy_teams) {
-                    if (team === bullet.team) continue;
-                    if (bullet.handle_collision_with_base(team, this)) bullets_to_remove.push(bullet);
+                if (!remove) {
+                    for (const team of activeTeams) {
+                        if (team === bullet.team) continue;
+                        if (bullet.handle_collision_with_base(team, this)) {
+                            remove = true;
+                            break;
+                        }
+                    }
                 }
-                if (bullet.should_remove()) bullets_to_remove.push(bullet);
+                if (!remove && !bullet.should_remove()) {
+                    survivors.push(bullet);
+                }
             }
-            this.bullets = this.bullets.filter(b => !bullets_to_remove.includes(b));
-            this.bullets.push(...new_bullets);
+            this.bullets = survivors.concat(newBullets);
             this.profiler.end_section();
             this.profiler.start_section("update_balls");
             const balls_to_remove = [];
@@ -1245,13 +1134,13 @@
                 }
                 const nearby = this.get_nearby_entities(ball.pos);
                 for (let [etype, entity] of nearby) {
-                    if (etype === 'ball' && entity !== ball && ball.team !== entity.team && ball._collide(entity)) {
+                    if (entity instanceof Ball && entity !== ball && ball.team !== entity.team && ball._collide(entity)) {
                         ball.handle_collision_with_ball(entity, this);
                         ball.radius = ball.calculate_radius();
                         entity.radius = entity.calculate_radius();
                     }
                 }
-                for (let team of active_enemy_teams) {
+                for (let team of activeTeams) {
                     if (team === ball.team) continue;
                     ball.handle_collision_with_base(team, this);
                 }
@@ -1309,14 +1198,6 @@
             this.profiler.start_section("draw_damage_text");
             for (let text of this.damage_texts) text.draw(ctx);
             this.profiler.end_section();
-            if (this.console_active) {
-                ctx.fillStyle = 'rgb(30,30,40)';
-                ctx.fillRect(10, SCREEN_HEIGHT - 40, SCREEN_WIDTH - 20, 30);
-                ctx.font = FONT;
-                ctx.fillStyle = 'rgb(200,200,200)';
-                ctx.textBaseline = 'top';
-                ctx.fillText(`> ${this.console_input}`, 20, SCREEN_HEIGHT - 35);
-            }
             if (performance.now() - this.message_time < 3000) {
                 ctx.font = FONT;
                 ctx.fillStyle = 'rgb(255,255,0)';
@@ -1332,22 +1213,17 @@
             ctx.font = LARGE_FONT;
             ctx.fillStyle = 'rgb(200,200,255)';
             ctx.textAlign = 'center';
-            ctx.fillText("球体战争 - 优化版", SCREEN_WIDTH / 2, 5);
+            ctx.fillText("球体战争 - 优化版", SCREEN_WIDTH / 2, 40);
             const game_time = Math.floor((performance.now() - this.start_time) / 1000);
             const time_text = `游戏时间: ${Math.floor(game_time / 60)}:${(game_time % 60).toString().padStart(2, '0')}`;
             ctx.font = FONT;
             ctx.fillStyle = 'rgb(180,180,200)';
-            const time_width = ctx.measureText(time_text).width;
-            ctx.fillText(time_text, SCREEN_WIDTH - time_width - 10, 10);
-            if (!this.console_active) {
-                const help_text = "按T打开控制台, /help查看命令";
-                const help_width = ctx.measureText(help_text).width;
-                ctx.fillStyle = 'rgb(150,150,180)';
-                ctx.fillText(help_text, SCREEN_WIDTH - help_width - 10, SCREEN_HEIGHT - 70);
-            }
+            ctx.textAlign = 'right';
+            ctx.fillText(time_text, SCREEN_WIDTH - 10, 10);
             this.draw_performance_info(ctx);
         }
         draw_performance_info(ctx) {
+            if (!DEBUG_ENABLED) return;
             let y = SCREEN_HEIGHT - 300;
             const [fps, duration] = this.profiler.get_fps();
             const fps_text = `FPS: ${fps.toFixed(1)} (Duration: ${duration.toFixed(3)})`;
@@ -1397,29 +1273,12 @@
         ctx.fillText("按R重新开始, 按ESC退出", SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2 + 20);
     }
     document.addEventListener('keydown', (e) => {
-        if (game.console_active) {
-            if (e.key === 'Enter') {
-                game.process_command(game.console_input);
-                game.console_input = '';
-            } else if (e.key === 'Backspace') {
-                game.console_input = game.console_input.slice(0, -1);
-            } else if (e.key === 'Escape') {
-                game.console_active = false;
-                game.console_input = '';
-            } else if (e.key.length === 1) {
-                game.console_input += e.key;
-            }
-        } else {
-            if (e.key.toLowerCase() === 't') {
-                game.console_active = true;
-            } else if (e.key.toLowerCase() === 'c') {
-                game.clear_map();
-            } else if (e.key === 'Escape') {
-                game.running = false;
-            }
+        if (e.key === 'Escape') {
+            game.running = false;
         }
         if (!game.running && e.key.toLowerCase() === 'r') {
             game = new Game();
+            initSelectTeam();
             requestAnimationFrame(loop);
         }
     });
@@ -1432,9 +1291,72 @@
         game.running = false;
         cancelAnimationFrame(animationId);
         game = new Game();
+        initSelectTeam();
         requestAnimationFrame(loop);
     }
+    function initSelectTeam() {
+        const select = document.getElementById('select_team');
+        select.innerHTML = '';
+        game.teams.forEach(t => {
+            const opt = document.createElement('option');
+            opt.value = t.name;
+            opt.text = t.name;
+            select.add(opt);
+        });
+    }
+    function addBullets() {
+        const team_name = document.getElementById('select_team').value;
+        const team = game.teams.find(t => t.name === team_name);
+        const type_str = document.getElementById('bullet_type').value;
+        const type = BulletType[type_str];
+        const amount = parseInt(document.getElementById('bullet_amount').value);
+        const value = parseInt(document.getElementById('bullet_value').value);
+        if (team && type && !isNaN(amount) && !isNaN(value)) {
+            game.add_bullet_to_queue(team, type, amount, value);
+            game.show_message(`已为${team.name}添加子弹`);
+        } else {
+            game.show_message("错误: 无效的子弹添加参数");
+        }
+    }
+    function addBalls() {
+        const team_name = document.getElementById('select_team').value;
+        const team = game.teams.find(t => t.name === team_name);
+        const type_str = document.getElementById('ball_type').value;
+        const type = BallType[type_str];
+        const amount = parseInt(document.getElementById('ball_amount').value);
+        const value = parseInt(document.getElementById('ball_value').value);
+        if (team && type && !isNaN(amount) && !isNaN(value)) {
+            for (let i = 0; i < amount; i++) {
+                game.add_ball(team, type, value);
+            }
+            game.show_message(`已为${team.name}添加${amount}个球体`);
+        } else {
+            game.show_message("错误: 无效的球体添加参数");
+        }
+    }
+    function addShield() {
+        const team_name = document.getElementById('select_team').value;
+        const team = game.teams.find(t => t.name === team_name);
+        const amount = parseInt(document.getElementById('shield_amount').value);
+        if (team && !isNaN(amount)) {
+            team.shield += amount;
+            game.show_message(`已为${team.name}添加护盾 +${amount}`);
+        } else {
+            game.show_message("错误: 无效的护盾添加参数");
+        }
+    }
+    function reviveTeam() {
+        const team_name = document.getElementById('select_team').value;
+        const team = game.teams.find(t => t.name === team_name);
+        if (team) {
+            team.revive();
+            game.show_message(`${team.name} 复活`);
+        }
+    }
+    function toggleDebug() {
+        DEBUG_ENABLED = !DEBUG_ENABLED;
+        const button = document.getElementById('debug-toggle');
+        button.textContent = DEBUG_ENABLED ? '隐藏调试信息' : '显示调试信息';
+    }
+    initSelectTeam();
     requestAnimationFrame(loop);
-</script>
-</body>
-</html>
