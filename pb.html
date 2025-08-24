@@ -1,0 +1,821 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"/>
+<title>充电宝信息查询与计算 · Power Bank Planner</title>
+<style>
+  :root{
+    --bg:#0f1115; --card:#171a21; --muted:#a7b0c0; --text:#e8eef7; --pri:#5aa9ff; --acc:#66e3b4; --warn:#ffb86b; --err:#ff6b6b; --bd:#232a36;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font:14px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,"Noto Sans","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif}
+  header{padding:20px 16px 8px;display:flex;gap:16px;align-items:center;flex-wrap:wrap}
+  header h1{margin:0;font-size:20px}
+  header .sub{color:var(--muted)}
+  .container{max-width:1200px;margin:0 auto;padding:8px 16px 80px}
+  .grid{display:grid;gap:12px}
+  @media (min-width: 980px){ .grid.cols-2{grid-template-columns:1fr 1fr} .grid.cols-3{grid-template-columns:1fr 1fr 1fr} }
+  .card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:14px}
+  .card h2{margin:0 0 10px;font-size:16px}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  .row > *{flex:1}
+  .row .small{flex:0 0 120px}
+  label{display:block;margin:4px 0 6px;color:var(--muted);font-size:12px}
+  input,select,textarea,button{
+    width:100%;padding:10px;border-radius:8px;border:1px solid var(--bd);background:#10141b;color:var(--text);
+    outline:none
+  }
+  input[type="number"]{appearance:textfield}
+  input:focus,select:focus,textarea:focus{border-color:var(--pri);box-shadow:0 0 0 3px #5aa9ff33}
+  button{cursor:pointer;background:#141a22}
+  .btn{background:var(--pri);color:#00111e;border:none}
+  .btn.sec{background:#242b36}
+  .btn.warn{background:var(--warn);color:#2b1900}
+  .btn.ghost{background:transparent;border:1px dashed var(--bd);color:var(--muted)}
+  .tag{display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px;border:1px solid var(--bd);color:var(--muted);margin-left:6px}
+  .danger{color:var(--err)}
+  .ok{color:var(--acc)}
+  table{width:100%;border-collapse:collapse}
+  th,td{padding:8px;border-bottom:1px solid var(--bd);text-align:right;white-space:nowrap}
+  th:first-child,td:first-child{text-align:left;max-width:260px;overflow:hidden;text-overflow:ellipsis}
+  .hint{color:var(--muted);font-size:12px}
+  .kvs{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+  .kvs .kv{background:#10141b;border:1px solid var(--bd);border-radius:8px;padding:8px}
+  .kv .k{color:#aab6c9;font-size:12px}
+  .kv .v{font-weight:600;font-size:16px}
+  .flex-end{display:flex;justify-content:flex-end;gap:8px}
+  .pill{display:inline-flex;align-items:center;gap:6px;background:#121820;border:1px solid var(--bd);padding:6px 10px;border-radius:999px}
+  .switch{display:inline-flex;align-items:center;gap:6px}
+  .switch input{width:auto}
+  footer{max-width:1200px;margin:0 auto;padding:16px;color:var(--muted)}
+  .mono{font-family: ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace}
+  .danger-box{border:1px dashed #ff6b6b66;background:#ff6b6b11;color:#ffb3b3;padding:8px;border-radius:8px}
+</style>
+</head>
+<body>
+  <header>
+    <h1>充电宝信息查询与计算</h1>
+    <span class="sub">Power Bank Planner · 多设备并充估算</span>
+    <span id="autosaveTag" class="tag">自动保存：—</span>
+  </header>
+
+  <div class="container grid cols-2">
+    <!-- 电池信息 -->
+    <section class="card">
+      <h2>① 电池信息（Power Bank）</h2>
+      <div class="grid cols-2">
+        <div>
+          <label>典型能量（Wh）</label>
+          <input type="number" step="0.01" id="pbWhTypical" value="74">
+        </div>
+        <div>
+          <label>额定能量（Wh）</label>
+          <input type="number" step="0.01" id="pbWhRated" value="72">
+        </div>
+        <div>
+          <label>标称电压（V） <span class="hint">例如 3.7 或 3.85</span></label>
+          <input type="number" step="0.01" id="pbNomV" value="3.7">
+        </div>
+        <div>
+          <label>可用系数（%） <span class="hint">预留关机/保护余量，默认 95%</span></label>
+          <input type="number" step="1" id="usablePct" value="95">
+        </div>
+        <div>
+          <label>起始电量（%）</label>
+          <input type="number" step="1" id="startSoC" value="100">
+        </div>
+        <div>
+          <label>转换效率（放电，%） <span class="hint">DC-DC + 开关损耗，默认 90%</span></label>
+          <input type="number" step="1" id="effDischarge" value="90">
+        </div>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <div>
+          <label>总输出功率上限（W Max，多口共享）</label>
+          <input type="number" step="0.1" id="globalOutW" value="100">
+        </div>
+        <div>
+          <label>瞬时放电上限（可选，W） <span class="hint">为空视为不限</span></label>
+          <input type="number" step="0.1" id="packBurstW" placeholder="">
+        </div>
+      </div>
+      <div class="hint" style="margin-top:6px">将用于并充分配与续航估算。典型/额定仅用于展示，实际计算使用“典型能量 × 可用系数 × 起始电量”。</div>
+    </section>
+
+    <!-- 输出端口 -->
+    <section class="card">
+      <h2>② 输出端口（可多设备共享同一端口）</h2>
+      <div id="portsWrap"></div>
+      <div class="row" style="margin-top:8px">
+        <button class="btn sec small" id="addPortBtn">+ 新增端口</button>
+        <button class="btn ghost small" id="clearPortsBtn">清空</button>
+      </div>
+      <div class="hint" style="margin-top:6px">每个端口填写一个总功率上限（W）。如果一个端口接多个设备，程序会在该端口内部按比例分配功率。</div>
+    </section>
+
+    <!-- 输入端口（回充） -->
+    <section class="card">
+      <h2>③ 输入端口（用于估算回充时间）</h2>
+      <div id="inPortsWrap"></div>
+      <div class="row" style="margin-top:8px">
+        <button class="btn sec small" id="addInPortBtn">+ 新增输入端口</button>
+        <button class="btn ghost small" id="clearInPortsBtn">清空</button>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <div>
+          <label>总输入功率上限（W Max，多口共享）</label>
+          <input type="number" step="0.1" id="globalInW" value="65">
+        </div>
+        <div>
+          <label>回充效率（%） <span class="hint">AC→DC/协议损耗，默认 88%</span></label>
+          <input type="number" step="1" id="effCharge" value="88">
+        </div>
+      </div>
+    </section>
+
+    <!-- 设备与线材 -->
+    <section class="card">
+      <h2>④ 设备与线材</h2>
+
+      <div class="row">
+        <div>
+          <label>从模板添加设备</label>
+          <div class="row">
+            <select id="tplSelect"></select>
+            <button class="btn small" id="addFromTpl">添加</button>
+            <button class="btn ghost small" id="editTplBtn">查看/编辑模板</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="devicesWrap" style="margin-top:8px"></div>
+      <div class="row" style="margin-top:8px">
+        <button class="btn sec small" id="addDeviceBtn">+ 新建设备</button>
+        <button class="btn ghost small" id="clearDevicesBtn">清空设备</button>
+      </div>
+
+      <div class="grid cols-2" style="margin-top:10px">
+        <div class="switch">
+          <input type="checkbox" id="useTaper" checked>
+          <label for="useTaper">启用快充转恒压（CV）减速模型</label>
+        </div>
+        <div class="row">
+          <div>
+            <label>减速起点（%）</label>
+            <input type="number" id="taperStart" step="1" value="80">
+          </div>
+          <div>
+            <label>终点相对功率（%） <span class="hint">到 100% 时相对峰值功率</span></label>
+            <input type="number" id="taperEndPct" step="1" value="20">
+          </div>
+        </div>
+        <div>
+          <label>线材功率上限缺省（W）</label>
+          <input type="number" id="defaultCableW" step="1" value="60">
+        </div>
+        <div>
+          <label>线材/路径损耗（%）</label>
+          <input type="number" id="lineLossPct" step="0.5" value="5">
+        </div>
+        <div>
+          <label>设备充电效率（%） <span class="hint">电池入能效率，默认 85%</span></label>
+          <input type="number" id="devEffPct" step="1" value="85">
+        </div>
+      </div>
+    </section>
+
+    <!-- 操作 -->
+    <section class="card">
+      <h2>⑤ 操作</h2>
+      <div class="row">
+        <button class="btn" id="calcBtn">开始计算</button>
+        <button class="btn sec" id="exportBtn">导出配置 JSON</button>
+        <input type="file" id="importFile" accept=".json" style="display:none"/>
+        <button class="btn sec" id="importBtn">导入配置</button>
+        <button class="btn ghost" id="resetBtn">重置为示例</button>
+      </div>
+      <div class="hint" style="margin-top:8px">所有输入会自动保存到浏览器（本地存储）。</div>
+    </section>
+
+    <!-- 结果 -->
+    <section class="card" style="grid-column:1/-1">
+      <h2>⑥ 结果</h2>
+      <div id="summary" class="kvs"></div>
+      <div id="resTables" style="margin-top:10px"></div>
+      <div id="warnings" style="margin-top:10px"></div>
+    </section>
+
+    <!-- 模板编辑 -->
+    <section class="card" style="grid-column:1/-1">
+      <h2>设备模板（可编辑 JSON）</h2>
+      <textarea id="tplEditor" rows="10" class="mono" spellcheck="false"></textarea>
+      <div class="flex-end" style="margin-top:8px">
+        <button class="btn" id="saveTplBtn">保存模板</button>
+        <button class="btn ghost" id="restoreTplBtn">恢复默认模板</button>
+      </div>
+      <div class="hint" style="margin-top:8px">字段说明：name、maxV、maxA、maxW（三者任填其一，程序会推导）；batteryWh 或（mAh+batV）；soc0、socTarget（默认 10→100）。</div>
+    </section>
+  </div>
+
+  <footer class="hint">
+    * 免责声明：本工具为估算用途。真实功率会随协议、温度、设备管理策略变化；部分设备在高电量或高温时限流。请以实际为准。
+  </footer>
+
+<script>
+const $ = (sel)=>document.querySelector(sel);
+const el = (tag, attrs={}, children=[])=>{
+  const d=document.createElement(tag);
+  Object.entries(attrs).forEach(([k,v])=>{
+    if(k==='class') d.className=v;
+    else if(k==='for') d.htmlFor=v;
+    else if(k==='text') d.textContent=v;
+    else if(k.startsWith('on') && typeof v==='function') d.addEventListener(k.slice(2), v);
+    else d.setAttribute(k,v);
+  });
+  children.forEach(c=>d.appendChild(c));
+  return d;
+};
+
+const defaultTemplates = ()=> ([
+  // 通用与近似（可编辑）
+  {name:"通用手机 20W / 15Wh", maxW:20, batteryWh:15, soc0:10, socTarget:100},
+  {name:"通用手机 30W / 16Wh", maxW:30, batteryWh:16, soc0:10, socTarget:100},
+  {name:"通用平板 30W / 30Wh", maxW:30, batteryWh:30, soc0:10, socTarget:100},
+  {name:"通用笔电 65W / 60Wh", maxW:65, batteryWh:60, soc0:10, socTarget:100},
+  {name:"通用笔电 100W / 70Wh", maxW:100, batteryWh:70, soc0:10, socTarget:100},
+  {name:"Nintendo Switch 18W / 16Wh", maxW:18, batteryWh:16, soc0:10, socTarget:100},
+  // 近似手机（占位）
+  {name:"iPhone（近似） 27W / 13Wh", maxW:27, batteryWh:13, soc0:10, socTarget:100},
+  {name:"Android Flagship（近似） 45W / 18Wh", maxW:45, batteryWh:18, soc0:10, socTarget:100}
+]);
+
+const storageKey = 'pb_planner_state_v1';
+const tplKey = 'pb_planner_tpl_v1';
+
+let state = {
+  battery:{ whTypical:74, whRated:72, nomV:3.7, usablePct:95, startSoC:100, effDischarge:90, globalOutW:100, packBurstW:null },
+  outputs:[ {name:"USB-C1", wMax:100, v:20}, {name:"USB-A", wMax:22.5, v:5} ],
+  inputs:[ {name:"USB-C IN", wMax:65, v:20} ],
+  inputsGlobalW:65, effCharge:88,
+  devices:[
+    // 示例
+    {name:"手机A", port:"USB-C1", maxW:30, cableW:60, soc0:10, socTarget:100, batteryWh:16},
+    {name:"平板B", port:"USB-A", maxW:18, cableW:30, soc0:20, socTarget:100, batteryWh:30}
+  ],
+  adv:{ useTaper:true, taperStart:80, taperEndPct:20, defaultCableW:60, lineLossPct:5, devEffPct:85 },
+};
+
+function loadState(){
+  try{
+    const s = localStorage.getItem(storageKey);
+    if(s){ state = JSON.parse(s); }
+  }catch(e){}
+}
+function saveState(){
+  localStorage.setItem(storageKey, JSON.stringify(state));
+  $('#autosaveTag').textContent = '自动保存：已保存';
+  clearTimeout(saveState.__t);
+  saveState.__t = setTimeout(()=>$('#autosaveTag').textContent='自动保存：—',1200);
+}
+
+function loadTemplates(){
+  let tpl = localStorage.getItem(tplKey);
+  if(!tpl){
+    tpl = JSON.stringify(defaultTemplates(), null, 2);
+    localStorage.setItem(tplKey, tpl);
+  }
+  return JSON.parse(tpl);
+}
+function saveTemplates(val){
+  localStorage.setItem(tplKey, val);
+}
+
+function valNum(id){ const v=parseFloat($(id).value); return isFinite(v)?v:0; }
+
+function renderBattery(){
+  $('#pbWhTypical').value = state.battery.whTypical ?? 0;
+  $('#pbWhRated').value = state.battery.whRated ?? 0;
+  $('#pbNomV').value = state.battery.nomV ?? 3.7;
+  $('#usablePct').value = state.battery.usablePct ?? 95;
+  $('#startSoC').value = state.battery.startSoC ?? 100;
+  $('#effDischarge').value = state.battery.effDischarge ?? 90;
+  $('#globalOutW').value = state.battery.globalOutW ?? 100;
+  $('#packBurstW').value = state.battery.packBurstW ?? '';
+}
+
+function bindBattery(){
+  ['pbWhTypical','pbWhRated','pbNomV','usablePct','startSoC','effDischarge','globalOutW','packBurstW'].forEach(id=>{
+    $( '#'+id ).addEventListener('input', ()=>{
+      state.battery.whTypical = valNum('#pbWhTypical');
+      state.battery.whRated   = valNum('#pbWhRated');
+      state.battery.nomV      = valNum('#pbNomV');
+      state.battery.usablePct = valNum('#usablePct');
+      state.battery.startSoC  = valNum('#startSoC');
+      state.battery.effDischarge = valNum('#effDischarge');
+      state.battery.globalOutW   = valNum('#globalOutW');
+      const bw = $('#packBurstW').value.trim();
+      state.battery.packBurstW = bw===''?null:parseFloat(bw)||null;
+      saveState();
+    });
+  });
+}
+
+function renderPorts(){
+  const wrap = $('#portsWrap');
+  wrap.innerHTML='';
+  state.outputs.forEach((p,idx)=>{
+    const row = el('div',{class:'row',style:'margin-bottom:8px'},[
+      el('div',{},[el('label',{text:`端口名称`}), el('input',{value:p.name || `端口${idx+1}`, oninput:(e)=>{p.name=e.target.value; saveState();}})]),
+      el('div',{},[el('label',{text:`端口电压（V，可选）`}), el('input',{type:'number',step:'0.1',value: p.v??'', oninput:(e)=>{p.v=parseFloat(e.target.value)||null; saveState();}})]),
+      el('div',{},[el('label',{text:`端口功率上限（W）`}), el('input',{type:'number',step:'0.1',value:p.wMax??0,oninput:(e)=>{p.wMax=parseFloat(e.target.value)||0; saveState();}})]),
+      el('div',{class:'small'},[el('label',{text:'操作'}), el('button',{class:'btn warn',text:'删除',onclick:()=>{state.outputs.splice(idx,1); renderPorts(); saveState();}})])
+    ]);
+    wrap.appendChild(row);
+  });
+}
+function renderInPorts(){
+  const wrap = $('#inPortsWrap');
+  wrap.innerHTML='';
+  state.inputs.forEach((p,idx)=>{
+    const row = el('div',{class:'row',style:'margin-bottom:8px'},[
+      el('div',{},[el('label',{text:`输入口名称`}), el('input',{value:p.name || `输入${idx+1}`, oninput:(e)=>{p.name=e.target.value; saveState();}})]),
+      el('div',{},[el('label',{text:`输入电压（V，可选）`}), el('input',{type:'number',step:'0.1',value: p.v??'', oninput:(e)=>{p.v=parseFloat(e.target.value)||null; saveState();}})]),
+      el('div',{},[el('label',{text:`输入功率上限（W）`}), el('input',{type:'number',step:'0.1',value:p.wMax??0,oninput:(e)=>{p.wMax=parseFloat(e.target.value)||0; saveState();}})]),
+      el('div',{class:'small'},[el('label',{text:'操作'}), el('button',{class:'btn warn',text:'删除',onclick:()=>{state.inputs.splice(idx,1); renderInPorts(); saveState();}})])
+    ]);
+    wrap.appendChild(row);
+  });
+  $('#globalInW').value = state.inputsGlobalW ?? 65;
+  $('#effCharge').value = state.effCharge ?? 88;
+}
+
+function bindInputPortsGlobal(){
+  $('#addInPortBtn').addEventListener('click', ()=>{
+    state.inputs.push({name:`输入${state.inputs.length+1}`, wMax:45, v:null});
+    renderInPorts(); saveState();
+  });
+  $('#clearInPortsBtn').addEventListener('click', ()=>{ state.inputs = []; renderInPorts(); saveState(); });
+  $('#globalInW').addEventListener('input', ()=>{ state.inputsGlobalW = valNum('#globalInW'); saveState(); });
+  $('#effCharge').addEventListener('input', ()=>{ state.effCharge = valNum('#effCharge'); saveState(); });
+}
+
+function bindPorts(){
+  $('#addPortBtn').addEventListener('click', ()=>{
+    state.outputs.push({name:`端口${state.outputs.length+1}`, v:null, wMax:30});
+    renderPorts(); saveState();
+  });
+  $('#clearPortsBtn').addEventListener('click', ()=>{ state.outputs=[]; renderPorts(); saveState(); });
+}
+
+function deviceRow(d, idx){
+  const portsOptions = state.outputs.map(p=>`<option value="${p.name}">${p.name}</option>`).join('');
+  const wrap=el('div',{class:'card',style:'background:#10141b;border:1px solid var(--bd);margin-bottom:8px'},[
+    el('div',{class:'row'},[
+      el('div',{style:'flex:2'},[el('label',{text:'设备名称'}),el('input',{value:d.name||`设备${idx+1}`,oninput:e=>{d.name=e.target.value; saveState();}})]),
+      el('div',{},[el('label',{text:'连接端口'}), (()=>{const s=el('select',{onchange:e=>{d.port=e.target.value; saveState();}});
+         s.innerHTML = `<option value="">（未指定）</option>${portsOptions}`; s.value=d.port||''; return s;})() ]),
+      el('div',{},[el('label',{text:'线材功率上限（W）'}), el('input',{type:'number',step:'1',value: d.cableW?? state.adv.defaultCableW,oninput:e=>{d.cableW=parseFloat(e.target.value)||0; saveState();}})]),
+      el('div',{class:'small'},[el('label',{text:'操作'}), el('button',{class:'btn warn',text:'删除',onclick:()=>{state.devices.splice(idx,1); renderDevices(); saveState();}})])
+    ]),
+    el('div',{class:'row'},[
+      el('div',{},[el('label',{text:'最大电压（V，可选）'}),el('input',{type:'number',step:'0.1',value:d.maxV??'',oninput:e=>{d.maxV=parseFloat(e.target.value)||null; saveState();}})]),
+      el('div',{},[el('label',{text:'最大电流（A，可选）'}),el('input',{type:'number',step:'0.1',value:d.maxA??'',oninput:e=>{d.maxA=parseFloat(e.target.value)||null; saveState();}})]),
+      el('div',{},[el('label',{text:'最大功率（W，可选）'}),el('input',{type:'number',step:'0.1',value:d.maxW??'',oninput:e=>{d.maxW=parseFloat(e.target.value)||null; saveState();}})]),
+    ]),
+    el('div',{class:'row'},[
+      el('div',{},[el('label',{text:'电池容量（Wh，或留空）'}),el('input',{type:'number',step:'0.1',value:d.batteryWh??'',oninput:e=>{d.batteryWh=parseFloat(e.target.value)||null; saveState();}})]),
+      el('div',{},[el('label',{text:'或：电池容量（mAh）'}),el('input',{type:'number',step:'1',value:d.mAh??'',oninput:e=>{d.mAh=parseFloat(e.target.value)||null; saveState();}})]),
+      el('div',{},[el('label',{text:'电池标称电压（V）'}),el('input',{type:'number',step:'0.01',value:d.batV ?? 3.85,oninput:e=>{d.batV=parseFloat(e.target.value)||3.85; saveState();}})]),
+    ]),
+    el('div',{class:'row'},[
+      el('div',{},[el('label',{text:'初始电量（%）'}),el('input',{type:'number',step:'1',value:d.soc0 ?? 10,oninput:e=>{d.soc0=parseFloat(e.target.value)||0; saveState();}})]),
+      el('div',{},[el('label',{text:'目标电量（%）'}),el('input',{type:'number',step:'1',value:d.socTarget ?? 100,oninput:e=>{d.socTarget=parseFloat(e.target.value)||100; saveState();}})]),
+    ])
+  ]);
+  return wrap;
+}
+function renderDevices(){
+  const w = $('#devicesWrap'); w.innerHTML='';
+  if(!state.devices.length){
+    w.appendChild(el('div',{class:'hint'},[document.createTextNode('尚未添加设备。可使用上方模板或点击“新建设备”。')]));
+  }else{
+    state.devices.forEach((d,i)=> w.appendChild(deviceRow(d,i)));
+  }
+}
+
+function renderTplUI(){
+  const tpls = loadTemplates();
+  const sel = $('#tplSelect');
+  sel.innerHTML = tpls.map((t,i)=>`<option value="${i}">${t.name}</option>`).join('');
+  $('#tplEditor').value = JSON.stringify(tpls, null, 2);
+}
+function bindTplUI(){
+  $('#addFromTpl').addEventListener('click', ()=>{
+    const tpls = loadTemplates();
+    const idx = parseInt($('#tplSelect').value)||0;
+    const t = JSON.parse(JSON.stringify(tpls[idx]));
+    // 推导 maxW
+    if((!t.maxW || t.maxW===0) && t.maxV && t.maxA) t.maxW = t.maxV * t.maxA;
+    // 推导 batteryWh
+    if((!t.batteryWh || t.batteryWh===0) && t.mAh && t.batV) t.batteryWh = t.mAh * t.batV / 1000;
+    t.port = state.outputs[0]?.name || '';
+    t.cableW = state.adv.defaultCableW;
+    state.devices.push(t);
+    renderDevices(); saveState();
+  });
+  $('#editTplBtn').addEventListener('click', ()=>{
+    const box = $('#tplEditor'); box.scrollIntoView({behavior:'smooth',block:'center'});
+    box.style.boxShadow='0 0 0 3px #5aa9ff55'; setTimeout(()=>box.style.boxShadow='none',800);
+  });
+  $('#saveTplBtn').addEventListener('click', ()=>{
+    try{
+      const parsed = JSON.parse($('#tplEditor').value);
+      if(!Array.isArray(parsed)) throw new Error('模板必须是数组');
+      saveTemplates(JSON.stringify(parsed,null,2)); renderTplUI();
+    }catch(e){ alert('JSON 无效：' + e.message); }
+  });
+  $('#restoreTplBtn').addEventListener('click', ()=>{
+    const d = defaultTemplates();
+    saveTemplates(JSON.stringify(d,null,2)); renderTplUI();
+  });
+}
+
+function bindDevicesOps(){
+  $('#addDeviceBtn').addEventListener('click', ()=>{
+    state.devices.push({name:`设备${state.devices.length+1}`, port: state.outputs[0]?.name || '', maxW:20, cableW: state.adv.defaultCableW, batteryWh:15, soc0:10, socTarget:100});
+    renderDevices(); saveState();
+  });
+  $('#clearDevicesBtn').addEventListener('click', ()=>{
+    state.devices=[]; renderDevices(); saveState();
+  });
+}
+
+function bindAdv(){
+  $('#useTaper').checked = state.adv.useTaper ?? true;
+  $('#taperStart').value = state.adv.taperStart ?? 80;
+  $('#taperEndPct').value = state.adv.taperEndPct ?? 20;
+  $('#defaultCableW').value = state.adv.defaultCableW ?? 60;
+  $('#lineLossPct').value = state.adv.lineLossPct ?? 5;
+  $('#devEffPct').value = state.adv.devEffPct ?? 85;
+
+  ['useTaper','taperStart','taperEndPct','defaultCableW','lineLossPct','devEffPct'].forEach(id=>{
+    $('#'+id).addEventListener('input', ()=>{
+      state.adv.useTaper = $('#useTaper').checked;
+      state.adv.taperStart = valNum('#taperStart');
+      state.adv.taperEndPct = valNum('#taperEndPct');
+      state.adv.defaultCableW = valNum('#defaultCableW');
+      state.adv.lineLossPct = valNum('#lineLossPct');
+      state.adv.devEffPct = valNum('#devEffPct');
+      saveState();
+    });
+  });
+}
+
+function exportConfig(){
+  const blob = new Blob([JSON.stringify(state,null,2)],{type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href=url; a.download='powerbank_config.json';
+  a.click(); URL.revokeObjectURL(url);
+}
+function importConfig(file){
+  const reader = new FileReader();
+  reader.onload = ()=>{
+    try{
+      const obj = JSON.parse(reader.result);
+      state=obj; saveState();
+      initUI();
+    }catch(e){ alert('导入失败：' + e.message); }
+  };
+  reader.readAsText(file);
+}
+
+function bindOps(){
+  $('#calcBtn').addEventListener('click', computeAndRender);
+  $('#exportBtn').addEventListener('click', exportConfig);
+  $('#importBtn').addEventListener('click', ()=>$('#importFile').click());
+  $('#importFile').addEventListener('change', (e)=>{
+    if(e.target.files?.[0]) importConfig(e.target.files[0]);
+  });
+  $('#resetBtn').addEventListener('click', ()=>{
+    localStorage.removeItem(storageKey);
+    state = {
+      battery:{ whTypical:74, whRated:72, nomV:3.7, usablePct:95, startSoC:100, effDischarge:90, globalOutW:100, packBurstW:null },
+      outputs:[ {name:"USB-C1", wMax:100, v:20}, {name:"USB-A", wMax:22.5, v:5} ],
+      inputs:[ {name:"USB-C IN", wMax:65, v:20} ],
+      inputsGlobalW:65, effCharge:88,
+      devices:[
+        {name:"手机A", port:"USB-C1", maxW:30, cableW:60, soc0:10, socTarget:100, batteryWh:16},
+        {name:"平板B", port:"USB-A", maxW:18, cableW:30, soc0:20, socTarget:100, batteryWh:30}
+      ],
+      adv:{ useTaper:true, taperStart:80, taperEndPct:20, defaultCableW:60, lineLossPct:5, devEffPct:85 },
+    };
+    initUI(); saveState();
+  });
+}
+
+function initUI(){
+  renderBattery(); bindBattery();
+  renderPorts(); bindPorts();
+  renderInPorts(); bindInputPortsGlobal();
+  renderDevices(); bindDevicesOps();
+  renderTplUI(); bindTplUI();
+  bindAdv();
+}
+
+// ---------- 计算核心 ----------
+function clamp(x, a, b){ return Math.min(Math.max(x,a), b); }
+function sum(arr){ return arr.reduce((a,b)=>a+(isFinite(b)?b:0),0); }
+function fmt(x, digits=2){ if(!isFinite(x)) return '—'; return Number(x).toFixed(digits); }
+
+function inferMaxW(dev){
+  let w = parseFloat(dev.maxW);
+  if(!isFinite(w) || w<=0){
+    const v = parseFloat(dev.maxV)||NaN, a=parseFloat(dev.maxA)||NaN;
+    if(isFinite(v) && isFinite(a)) w = v*a;
+  }
+  return isFinite(w)? w : 0;
+}
+function inferBatteryWh(dev){
+  let wh = parseFloat(dev.batteryWh);
+  if(isFinite(wh) && wh>0) return wh;
+  const mAh=parseFloat(dev.mAh)||NaN, v=parseFloat(dev.batV)||3.85;
+  if(isFinite(mAh) && isFinite(v) && mAh>0) return mAh * v / 1000;
+  return 0;
+}
+
+// 在端口内按比例分配（设备欲取功率 caps[]，端口上限 limitW）
+function allocateWithinLimit(caps, limitW){
+  const total = sum(caps);
+  if(total <= limitW + 1e-9) return caps.slice();
+  const scale = limitW / (total || 1e-12);
+  return caps.map(x=>x*scale);
+}
+
+// 线损后到设备输入的功率
+function applyLineLoss(w, lossPct){ return w * (1 - lossPct/100); }
+
+// 快充→恒压（CV）减速简单模型：在 tStart% 之后，平均功率按 (1 + endRatio)/2 衰减
+function timeToChargeWithTaper(devWh, P_in, soc0, socT, taperStart=80, endPct=20){
+  soc0=clamp(soc0,0,100); socT=clamp(socT,0,100);
+  if(socT<=soc0 || P_in<=0) return 0;
+  const s = taperStart;
+  const endRatio = endPct/100; // 在 100% 时的相对功率
+  const avgTaperRatio = (1 + endRatio)/2; // 线性到终点的平均比例
+
+  let time=0;
+  const seg = (lo,hi,ratio)=> ((hi-lo)/100*devWh) / (P_in * ratio);
+
+  if(soc0 < Math.min(s, socT)){
+    const hi = Math.min(s, socT);
+    time += seg(soc0, hi, 1); // CC 段，全速
+  }
+  if(socT > s){
+    const lo = Math.max(soc0, s);
+    const hi = socT;
+    // CV 段：平均功率下降（简化为均值）
+    time += seg(lo, hi, avgTaperRatio);
+  }
+  return time; // 小时
+}
+
+// 主计算
+function compute(){
+  const bat = state.battery;
+  const adv = state.adv;
+
+  // 充电宝可用能量（Wh）
+  const usableWh = bat.whTypical * (bat.usablePct/100) * (bat.startSoC/100);
+  const effDis = bat.effDischarge/100;
+
+  // 先按端口内分配
+  const portMap = {}; // name -> {limit, devIdx[], caps[]}
+  state.outputs.forEach(p=> portMap[p.name] = {limit: parseFloat(p.wMax)||0, devIdx:[], caps:[]});
+  state.devices.forEach((d,i)=>{
+    const port = d.port || '';
+    if(!portMap[port]) return; // 未分配端口的跳过本轮
+    const devMaxW = Math.max(0, inferMaxW(d));
+    const cableW = Math.max(0, parseFloat(d.cableW)||adv.defaultCableW||0);
+    const portW = Math.max(0, portMap[port].limit||0);
+    const cap = Math.min(devMaxW, cableW, portW);
+    portMap[port].devIdx.push(i);
+    portMap[port].caps.push(cap);
+  });
+
+  const devAlloc = new Array(state.devices.length).fill(0);
+  Object.values(portMap).forEach(group=>{
+    const alloc = allocateWithinLimit(group.caps, group.limit);
+    group.devIdx.forEach((idx,k)=> devAlloc[idx] = alloc[k]);
+  });
+
+  // 全局总功率上限（含可能的 packBurstW）
+  let totalDesired = sum(devAlloc);
+  let globalLimit = Math.max(0, parseFloat(bat.globalOutW)||0);
+  if(isFinite(bat.packBurstW) && bat.packBurstW>0) globalLimit = Math.min(globalLimit, bat.packBurstW);
+
+  let finalAlloc = devAlloc.slice();
+  if(totalDesired > globalLimit + 1e-9){
+    const scale = globalLimit / (totalDesired || 1e-12);
+    finalAlloc = finalAlloc.map(x=>x*scale);
+  }
+  const totalOutW = sum(finalAlloc);
+
+  // 由电池侧看到的功率（考虑放电效率）
+  const packW = totalOutW / (effDis || 1e-12);
+  const drainHours = packW>0 ? usableWh / packW : Infinity;
+
+  // 逐设备：线损 -> 设备入端功率；再估算充满时间/可达电量
+  const lineLoss = adv.lineLossPct || 0;
+  const devEff = (adv.devEffPct || 85)/100;
+
+  const perDevice = state.devices.map((d, i)=>{
+    const wPort = finalAlloc[i] || 0;
+    const wAtDev = applyLineLoss(wPort, lineLoss); // 到设备 USB 口
+    const wIntoBattery = wAtDev * devEff;          // 最终进入电池（储能）
+
+    const batWh = inferBatteryWh(d); // 设备电池 Wh（可 0）
+    const soc0 = isFinite(d.soc0)? d.soc0 : 10;
+    const socT = isFinite(d.socTarget)? d.socTarget : 100;
+
+    let tFull = null, reachSoc = null, timeToReachSoc = null, deliveredWh = 0;
+
+    if(batWh>0 && wAtDev>0){
+      // 需要的储能（Wh）
+      const needWh = (clamp(socT,0,100) - clamp(soc0,0,100))/100 * batWh;
+      const useTaper = !!adv.useTaper;
+      const tNeeded = useTaper
+        ? timeToChargeWithTaper(batWh, wAtDev, soc0, socT, adv.taperStart||80, adv.taperEndPct||20) / devEff // 这里 wAtDev 已经是口功率，taper模型按口功率；再除以 devEff 折算储能
+        : (needWh / (wIntoBattery || 1e-12)); // 小时
+
+      if(drainHours >= tNeeded){ // 能在电量耗尽前充满到目标
+        tFull = tNeeded;
+        deliveredWh = needWh / (devEff||1e-12) * devEff; // 进入电池的能量 ≈ needWh（这里显示储能，故为 needWh）
+        reachSoc = socT;
+        timeToReachSoc = tFull;
+      }else{
+        // 只能充一部分，在 drainHours 时间内可充入的储能
+        const chargedWhIntoBat = wIntoBattery * drainHours *
+          (adv.useTaper ? // 若使用减速模型，简单估计按“先充到 taperStart，再均值减速”，用迭代近似更复杂，这里给保守估计：不加速益处
+            0.9 : 1.0);
+        const totalNeedWhTo100 = (100 - soc0)/100 * batWh;
+        const socGainPct = totalNeedWhTo100>0 ? (chargedWhIntoBat / totalNeedWhTo100 * 100) : 0;
+        reachSoc = clamp(soc0 + socGainPct, soc0, 100);
+        deliveredWh = Math.min(chargedWhIntoBat, (socT - soc0)/100*batWh);
+        timeToReachSoc = drainHours;
+      }
+    }else{
+      // 未提供电池信息：仍显示在口处分到的功率及供电时长内的能量
+      deliveredWh = wAtDev * drainHours * devEff; // 估为进入负载的等效储能（如供电设备无电池则仅显示能量传递）
+    }
+
+    return {
+      name: d.name || `设备${i+1}`,
+      port: d.port || '—',
+      wPort: wPort,
+      wAtDev: wAtDev,
+      batWh,
+      soc0, socT,
+      tFull, reachSoc, timeToReachSoc,
+      deliveredWh
+    };
+  });
+
+  // 回充时间估算
+  const inCaps = state.inputs.map(p=>Math.max(0, parseFloat(p.wMax)||0));
+  const inSum = sum(inCaps);
+  const inGlobal = Math.max(0, parseFloat(state.inputsGlobalW)||0);
+  const inLimit = Math.min(inSum, inGlobal);
+  const effChg = (state.effCharge||88)/100;
+  const toFullWh = bat.whTypical * (100 - bat.startSoC)/100; // 还需补回的典型电量
+  const tRecharge = inLimit>0 ? (toFullWh / (inLimit * effChg)) : Infinity;
+
+  return {
+    usableWh, effDis, finalAlloc, totalOutW, packW, drainHours,
+    perDevice,
+    recharge:{ inSum, inGlobal, inLimit, effChg, toFullWh, tRecharge }
+  };
+}
+
+// ---------- 渲染结果 ----------
+function renderSummary(res){
+  const kvs = $('#summary');
+  kvs.innerHTML='';
+  const items = [
+    ['可用能量（Wh）', fmt(res.usableWh,2)],
+    ['放电效率（%）', fmt(state.battery.effDischarge,0)],
+    ['总分配功率（W）', fmt(res.totalOutW,2)],
+    ['电池侧视在功率（W）', fmt(res.packW,2)],
+    ['预计可持续供电时长', (res.drainHours===Infinity?'—': (fmt(res.drainHours,2) + ' h / ' + fmt(res.drainHours*60,0) + ' min'))],
+  ];
+  items.forEach(([k,v])=>{
+    const kv = el('div',{class:'kv'},[
+      el('div',{class:'k',text:k}),
+      el('div',{class:'v',text:v})
+    ]);
+    kvs.appendChild(kv);
+  });
+}
+
+function renderTables(res){
+  const wrap = $('#resTables'); wrap.innerHTML='';
+
+  // 设备表
+  const tb = document.createElement('table');
+  tb.innerHTML = `
+    <thead>
+      <tr>
+        <th>设备</th>
+        <th>端口</th>
+        <th>端口功率 W</th>
+        <th>到设备口 W</th>
+        <th>设备电池 Wh</th>
+        <th>初始 → 目标 %</th>
+        <th>预计充满时间</th>
+        <th>可达电量 / 时间</th>
+        <th>进入电池能量 Wh</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  `;
+  const tbody = tb.querySelector('tbody');
+  res.perDevice.forEach(d=>{
+    const tr = document.createElement('tr');
+    const tFull = d.tFull==null ? '—' : `${fmt(d.tFull,2)} h`;
+    const reach = d.reachSoc==null ? '—' : `${fmt(d.reachSoc,1)}% @ ${fmt(d.timeToReachSoc,2)} h`;
+    tr.innerHTML = `
+      <td>${d.name}</td>
+      <td>${d.port}</td>
+      <td>${fmt(d.wPort,2)}</td>
+      <td>${fmt(d.wAtDev,2)}</td>
+      <td>${d.batWh?fmt(d.batWh,2):'—'}</td>
+      <td>${fmt(d.soc0,0)} → ${fmt(d.socT,0)}</td>
+      <td>${tFull}</td>
+      <td>${reach}</td>
+      <td>${fmt(d.deliveredWh,2)}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+  wrap.appendChild(tb);
+
+  // 回充表
+  const t2 = document.createElement('table');
+  t2.style.marginTop='10px';
+  const rech = res.recharge;
+  t2.innerHTML = `
+    <thead><tr><th>回充汇总</th><th>值</th></tr></thead>
+    <tbody>
+      <tr><td>可用输入端口功率合计（未限流）</td><td>${fmt(rech.inSum,1)} W</td></tr>
+      <tr><td>总输入功率上限（共享）</td><td>${fmt(rech.inGlobal,1)} W</td></tr>
+      <tr><td>生效输入功率</td><td>${fmt(rech.inLimit,1)} W</td></tr>
+      <tr><td>回充效率</td><td>${fmt(rech.effChg*100,0)} %</td></tr>
+      <tr><td>需要补回能量</td><td>${fmt(rech.toFullWh,2)} Wh</td></tr>
+      <tr><td>预计回充时间</td><td>${rech.tRecharge===Infinity?'—':fmt(rech.tRecharge,2)+' h'}</td></tr>
+    </tbody>
+  `;
+  wrap.appendChild(t2);
+}
+
+function renderWarnings(res){
+  const w = $('#warnings'); w.innerHTML='';
+  const msgs=[];
+  // 端口容量、全局容量不够提示
+  const totalCaps = sum(state.outputs.map(p=>Math.max(0, parseFloat(p.wMax)||0)));
+  if(res.totalOutW < totalCaps - 1e-6){
+    // 可能是全局限流或线材/设备限流
+    if(res.totalOutW + 1e-6 < state.battery.globalOutW){
+      msgs.push('注意：部分设备/线材/端口上限导致无法用满所有端口总功率。');
+    }else{
+      msgs.push('已受“总输出功率上限（多口共享）”限制，设备功率按比例缩放。');
+    }
+  }
+  if(state.devices.some(d=>!d.port)){
+    msgs.push('存在未指定端口的设备：它们不会参与分配。');
+  }
+  if(state.battery.packBurstW){
+    msgs.push('开启了“瞬时放电上限”。当设备总功率超限时，已全局按比例缩放。');
+  }
+  if(state.adv.useTaper){
+    msgs.push('已启用“快充→恒压”减速模型，尾段充电时间会延长（近似计算）。');
+  }
+  if(msgs.length){
+    const box = el('div',{class:'danger-box'},[el('div',{text: msgs.join(' ')})]);
+    w.appendChild(box);
+  }
+}
+
+function computeAndRender(){
+  const res = compute();
+  renderSummary(res);
+  renderTables(res);
+  renderWarnings(res);
+}
+
+// ---- 启动 ----
+loadState();
+initUI();
+saveState();
+computeAndRender();
+</script>
+</body>
+</html>
