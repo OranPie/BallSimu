@@ -1,4 +1,4 @@
-c<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -1036,6 +1036,7 @@ c<!DOCTYPE html>
             this.territory_owners = new Map();
             this.init_territory();
             this.particles = [];
+            this.pause = false;
             this.damage_texts = [];
             this.start_time = performance.now();
             this.grid = new Map();
@@ -1441,14 +1442,31 @@ c<!DOCTYPE html>
     let animationId;
     function loop() {
         game.profiler.frame_end();
+        
         if (!game.running) {
             cancelAnimationFrame(animationId);
             draw_end_screen();
             return;
         }
+        if(game.pause) {
+            cancelAnimationFrame(animationId);
+            game.running = false;
+            draw_pause_screen();
+            return;
+        }
         game.update();
         game.draw();
         animationId = requestAnimationFrame(loop);
+    }
+    function draw_pause_screen() {
+        ctx.fillStyle = 'rgb(20,20,30)';
+        ctx.fillRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
+        ctx.font = LARGE_FONT;
+        ctx.fillStyle = 'rgb(255,255,255)';
+        ctx.textAlign = 'center';
+        ctx.fillText("游戏已终止", SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2 - 50);
+        ctx.font = FONT;
+        ctx.fillText("按R重新开始, 按ESC退出", SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2 + 20);
     }
     function draw_end_screen() {
         ctx.fillStyle = 'rgb(20,20,30)';
@@ -1466,7 +1484,7 @@ c<!DOCTYPE html>
     }
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
-            game.running = false;
+            game.pause = true;
         }
         if (!game.running && e.key.toLowerCase() === 'r') {
             game = new Game();
